@@ -1,0 +1,13 @@
+<library path="position_joint_controller">
+  <class name="position_joint_controller/PositionJointController"
+         type="position_joint_controller::PositionJointController"
+         base_class_type="controller_interface::ControllerInterface">
+    <description>
+      A position controller that accepts joint position commands via a
+      std_msgs/Float64MultiArray ROS 2 topic (7 values in radians).
+      On activation it latches the current joint positions so the robot
+      holds its pose until the first command arrives.
+      Works on both the real TiagoPro robot and in Gazebo simulation.
+    </description>
+  </class>
+</library>

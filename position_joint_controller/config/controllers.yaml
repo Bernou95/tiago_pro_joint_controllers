@@ -1,0 +1,14 @@
+# Real-robot configuration for PositionJointController.
+# Passed via --param-file to the spawner. The spawner reads
+# position_joint_controller.ros__parameters.type and sets it on the
+# controller_manager before calling load_controller.
+
+position_joint_controller:
+  ros__parameters:
+    type: position_joint_controller/PositionJointController
+    robot_type: 'tiago_pro'
+    arm_prefix: ''
+    filter_coeff: 1.0  # IIR coefficient [0,1]: 1.0=no filter, 0.0=hold
+    publish_rate: 100.0  # Hz: max rate at which commands are written to hardware (TriggerRate)
+    position_limits_lower: [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]  # rad, TiagoPro
+    position_limits_upper: [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973]  # rad, TiagoPro
