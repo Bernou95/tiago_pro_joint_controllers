@@ -26,9 +26,9 @@ namespace position_joint_controller {
 
 // TiagoPro per-joint position limits in rad
 static constexpr std::array<double, 7> kDefaultPositionLimitsLower{
-    -2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973};
+    -4.7123, -2.4434, -2.6179, -2.4434, -1.5708, -1.8849, -2.6179};
 static constexpr std::array<double, 7> kDefaultPositionLimitsUpper{
-    2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973};
+    0.5235, 1.1344, 2.6179, 1.1344, 3.6651, 3.0019, 2.6179};
 
 // ---------------------------------------------------------------------------
 // Interface configuration
@@ -39,7 +39,7 @@ PositionJointController::command_interface_configuration() const {
   controller_interface::InterfaceConfiguration config;
   config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
   for (int i = 1; i <= kNumJoints; ++i) {
-    config.names.push_back(arm_prefix_ + robot_type_ + "_joint" + std::to_string(i) +
+    config.names.push_back(arm_prefix_ + std::to_string(i) + "_joint" +
                            "/position");
   }
   return config;
@@ -50,7 +50,7 @@ PositionJointController::state_interface_configuration() const {
   controller_interface::InterfaceConfiguration config;
   config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
   for (int i = 1; i <= kNumJoints; ++i) {
-    config.names.push_back(arm_prefix_ + robot_type_ + "_joint" + std::to_string(i) +
+    config.names.push_back(arm_prefix_ + std::to_string(i) + "_joint" +
                            "/position");
   }
   return config;
@@ -63,7 +63,7 @@ PositionJointController::state_interface_configuration() const {
 CallbackReturn PositionJointController::on_init() {
   try {
     auto_declare<std::string>("robot_type", "tiago_pro");
-    auto_declare<std::string>("arm_prefix", "");
+    auto_declare<std::string>("arm_prefix", "left_arm");
     auto_declare<double>("filter_coeff", 0.3);
     auto_declare<std::vector<double>>(
         "position_limits_lower",
@@ -71,7 +71,7 @@ CallbackReturn PositionJointController::on_init() {
     auto_declare<std::vector<double>>(
         "position_limits_upper",
         std::vector<double>(kDefaultPositionLimitsUpper.begin(), kDefaultPositionLimitsUpper.end()));
-    auto_declare<double>("publish_rate", 100.0);
+    auto_declare<int>("publish_rate", 100);
   } catch (const std::exception& e) {
     fprintf(stderr, "Exception thrown during on_init with message: %s\n", e.what());
     return CallbackReturn::ERROR;
@@ -104,9 +104,9 @@ CallbackReturn PositionJointController::on_configure(
   std::copy(lower_vec.begin(), lower_vec.end(), position_limits_lower_.begin());
   std::copy(upper_vec.begin(), upper_vec.end(), position_limits_upper_.begin());
 
-  const double publish_rate = get_node()->get_parameter("publish_rate").as_double();
+  const int publish_rate = get_node()->get_parameter("publish_rate").as_int();
   if (publish_rate <= 0.0) {
-    RCLCPP_FATAL(get_node()->get_logger(), "publish_rate must be positive, got %.1f.", publish_rate);
+    RCLCPP_FATAL(get_node()->get_logger(), "publish_rate must be positive, got %d.", publish_rate);
     return CallbackReturn::ERROR;
   }
   write_period_ns_ = static_cast<int64_t>(1e9 / publish_rate);
@@ -134,7 +134,7 @@ CallbackReturn PositionJointController::on_configure(
   // Build expected joint name list for message validation.
   std::vector<std::string> expected_names;
   for (int i = 1; i <= kNumJoints; ++i) {
-    expected_names.push_back(arm_prefix_ + robot_type_ + "_joint" + std::to_string(i));
+    expected_names.push_back(arm_prefix_ + std::to_string(i) + "_joint");
   }
 
   commands_subscriber_ =
@@ -177,7 +177,7 @@ CallbackReturn PositionJointController::on_configure(
 
   RCLCPP_INFO(get_node()->get_logger(),
               "PositionJointController configured for robot '%s%s'. filter_coeff=%.2f, "
-              "publish_rate=%.1f Hz.",
+              "publish_rate=%d Hz.",
               arm_prefix_.c_str(), robot_type_.c_str(), filter_coeff, publish_rate);
   return CallbackReturn::SUCCESS;
 }

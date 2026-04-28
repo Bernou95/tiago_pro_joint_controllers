@@ -35,6 +35,6 @@ effort_joint_controller:
     state_interfaces:
       - effort
 
-    effort_limits: [87.0, 87.0, 87.0, 87.0, 12.0, 12.0, 12.0]  # N*m, TiagoPro per-joint limits
+    effort_limits: [43.0, 43.0, 26.0, 26.0, 26.0, 26.0, 26.0]  # N*m, TiagoPro per-joint limits
     delta_tau_max: 1.0  # N*m/cycle max torque rate
     publish_rate: 500.0  # Hz: max rate at which torque commands are written to hardware (TriggerRate)
