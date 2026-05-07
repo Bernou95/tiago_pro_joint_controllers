@@ -59,6 +59,7 @@ class LaunchArguments(LaunchArgumentsBase):
     wrist_model_left: DeclareLaunchArgument = TiagoProArgs.wrist_model_left
     camera_model: DeclareLaunchArgument = TiagoProArgs.camera_model
     laser_model: DeclareLaunchArgument = TiagoProArgs.laser_model
+    
 
     navigation: DeclareLaunchArgument = CommonArgs.navigation
     advanced_navigation: DeclareLaunchArgument = CommonArgs.advanced_navigation
@@ -68,6 +69,7 @@ class LaunchArguments(LaunchArgumentsBase):
     world_name: DeclareLaunchArgument = CommonArgs.world_name
     tuck_arm: DeclareLaunchArgument = CommonArgs.tuck_arm
     is_public_sim: DeclareLaunchArgument = CommonArgs.is_public_sim
+    gazebo_version: DeclareLaunchArgument = CommonArgs.gazebo_version
 
 
 def private_navigation(context, *args, **kwargs):
@@ -129,11 +131,9 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
     launch_description.add_action(public_sim_check)
 
     robot_name = "tiago_pro"
-    #packages = ["tiago_pro_description", "pal_sea_arm_description",
-    #            "omni_base_description", "pal_pro_gripper_description",
-    #            "tiago_pro_head_description"]
     packages = ["tiago_pro_description", "pal_sea_arm_description",
-                "omni_base_description"]
+                "omni_base_description", "pal_pro_gripper_description",
+                "tiago_pro_head_description"]
 
     model_path = get_model_paths(packages)
 
@@ -153,17 +153,6 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
 
     launch_description.add_action(gazebo)
 
-    #navigation = GroupAction(
-    #    condition=IfCondition(LaunchConfiguration('navigation')),
-    #    actions=[
-    #        # Private Navigation
-    #        OpaqueFunction(
-    #            function=private_navigation,
-    #            condition=UnlessCondition(LaunchConfiguration('is_public_sim'))
-    #        ),
-    #    ]
-    #)
-    #launch_description.add_action(navigation)
 
     robot_spawn = include_scoped_launch_py_description(
         pkg_name="tiago_pro_gazebo",
@@ -171,10 +160,6 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
 
     launch_description.add_action(robot_spawn)
 
-    # --- EN LUGAR DE INCLUIR tiago_pro_bringup ---
-
-    # 1. Lanzamos SOLO el robot_state_publisher (vital para las transformaciones TF)
-    # Sacamos la información directamente del paquete de descripción
     robot_state_publisher = include_scoped_launch_py_description(
         pkg_name='tiago_pro_description',
         paths=['launch', 'robot_state_publisher.launch.py'],
@@ -189,8 +174,6 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
     )
     launch_description.add_action(robot_state_publisher)
 
-    # 2. Cargamos TUS controladores de esfuerzo (los de tu FR3 adaptados)
-    # Asegúrate de que este archivo YAML tenga los nombres de joints del TIAGo Pro
     controllers_yaml = PathJoinSubstitution(
         [FindPackageShare('position_joint_controller'), 'config', 'controllers_gazebo.yaml']
     )
