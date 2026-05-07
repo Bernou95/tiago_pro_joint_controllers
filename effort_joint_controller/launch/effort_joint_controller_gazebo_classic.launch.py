@@ -68,6 +68,7 @@ class LaunchArguments(LaunchArgumentsBase):
     world_name: DeclareLaunchArgument = CommonArgs.world_name
     tuck_arm: DeclareLaunchArgument = CommonArgs.tuck_arm
     is_public_sim: DeclareLaunchArgument = CommonArgs.is_public_sim
+    gazebo_version: DeclareLaunchArgument = CommonArgs.gazebo_version
 
 
 def private_navigation(context, *args, **kwargs):
@@ -115,78 +116,6 @@ def private_navigation(context, *args, **kwargs):
     )
     actions.append(robot_info_publisher)
 
-    # Laser Sensors
-    laser_bringup_launch = include_launch_py_description(
-        pkg_name=base_type + '_laser_sensors',
-        paths=['launch', 'laser_sim.launch.py'],
-    )
-    #actions.append(laser_bringup_launch)
-
-    # Navigation
-    nav_bringup_launch = include_launch_py_description(
-        pkg_name=base_type + '_2dnav',
-        paths=['launch', 'navigation.launch.py'],
-    )
-    #actions.append(nav_bringup_launch)
-
-    # Localization
-    loc_bringup_launch = include_launch_py_description(
-        pkg_name=base_type + '_2dnav',
-        paths=['launch', 'localization.launch.py'],
-        condition=UnlessCondition(LaunchConfiguration('slam'))
-    )
-    #actions.append(loc_bringup_launch)
-
-    # SLAM
-    slam_bringup_launch = include_launch_py_description(
-        pkg_name=base_type + '_2dnav',
-        paths=['launch', 'slam.launch.py'],
-        condition=IfCondition(LaunchConfiguration('slam'))
-    )
-    #actions.append(slam_bringup_launch)
-
-    # Docking
-    docking_bringup_launch = include_launch_py_description(
-        pkg_name=base_type + '_docking',
-        paths=['launch', 'docking_sim.launch.py'],
-        condition=IfCondition(LaunchConfiguration('docking'))
-    )
-    #actions.append(docking_bringup_launch)
-
-    # Stores Server
-    db_bringup_launch = Node(
-        package='pal_stores_server',
-        executable='pal_stores_server',
-        arguments=[os.path.join(
-            os.environ['HOME'], '.pal', 'stores.db'
-        )],
-        output='screen',
-        condition=IfCondition(LaunchConfiguration('advanced_navigation'))
-    )
-    #actions.append(db_bringup_launch)
-
-    # Advanced Navigation
-    advanced_nav_bringup_launch = include_launch_py_description(
-        pkg_name=base_type + '_advanced_2dnav',
-        paths=['launch', 'advanced_navigation.launch.py'],
-        condition=IfCondition(LaunchConfiguration('advanced_navigation'))
-    )
-    #actions.append(advanced_nav_bringup_launch)
-
-    # RViz
-    rviz_bringup_launch = Node(
-        package='rviz2',
-        executable='rviz2',
-        arguments=['-d', os.path.join(
-            get_package_share_directory(rviz_cfg_pkg),
-            'config',
-            'rviz',
-            'navigation.rviz',
-        )],
-        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
-        output='screen',
-    )
-    #actions.append(rviz_bringup_launch)
     return actions
 
 
@@ -223,35 +152,6 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
 
     launch_description.add_action(gazebo)
 
-    navigation = GroupAction(
-        condition=IfCondition(LaunchConfiguration('navigation')),
-        actions=[
-            # Private Navigation
-            OpaqueFunction(
-                function=private_navigation,
-                condition=UnlessCondition(LaunchConfiguration('is_public_sim'))
-            ),
-        ]
-    )
-    launch_description.add_action(navigation)
-
-    move_group = include_scoped_launch_py_description(
-        pkg_name="tiago_pro_moveit_config",
-        paths=["launch", "move_group.launch.py"],
-        launch_arguments={
-            "robot_name": robot_name,
-            "use_sim_time": LaunchConfiguration("use_sim_time"),
-            "base_type": launch_args.base_type,
-            "arm_type_right": launch_args.arm_type_right,
-            "arm_type_left": launch_args.arm_type_left,
-            "end_effector_right": launch_args.end_effector_right,
-            "end_effector_left": launch_args.end_effector_left,
-            "ft_sensor_right": launch_args.ft_sensor_right,
-            "ft_sensor_left": launch_args.ft_sensor_left
-        },
-        condition=IfCondition(LaunchConfiguration("moveit")))
-
-    #launch_description.add_action(move_group)
 
     robot_spawn = include_scoped_launch_py_description(
         pkg_name="tiago_pro_gazebo",
@@ -259,31 +159,6 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
 
     launch_description.add_action(robot_spawn)
 
-    """tiago_bringup = include_scoped_launch_py_description(
-        pkg_name="tiago_pro_bringup", paths=["launch", "tiago_pro_bringup.launch.py"],
-        launch_arguments={
-            "use_sim_time": LaunchConfiguration("use_sim_time"),
-            "arm_type_right": launch_args.arm_type_right,
-            "arm_type_left": launch_args.arm_type_left,
-            "end_effector_right": launch_args.end_effector_right,
-            "end_effector_left": launch_args.end_effector_left,
-            "ft_sensor_right": launch_args.ft_sensor_right,
-            "ft_sensor_left": launch_args.ft_sensor_left,
-            "tool_changer_right": launch_args.tool_changer_right,
-            "tool_changer_left": launch_args.tool_changer_left,
-            "wrist_model_right": launch_args.wrist_model_right,
-            "wrist_model_left": launch_args.wrist_model_left,
-            "laser_model": launch_args.laser_model,
-            "camera_model": launch_args.camera_model,
-            "base_type": launch_args.base_type,
-            "is_public_sim": launch_args.is_public_sim}
-    )
-
-    launch_description.add_action(tiago_bringup)"""
-    # --- EN LUGAR DE INCLUIR tiago_pro_bringup ---
-
-    # 1. Lanzamos SOLO el robot_state_publisher (vital para las transformaciones TF)
-    # Sacamos la información directamente del paquete de descripción
     robot_state_publisher = include_scoped_launch_py_description(
         pkg_name='tiago_pro_description',
         paths=['launch', 'robot_state_publisher.launch.py'],
@@ -297,8 +172,6 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
     )
     launch_description.add_action(robot_state_publisher)
 
-    # 2. Cargamos TUS controladores de esfuerzo (los de tu FR3 adaptados)
-    # Asegúrate de que este archivo YAML tenga los nombres de joints del TIAGo Pro
     controllers_yaml = PathJoinSubstitution(
         [FindPackageShare('effort_joint_controller'), 'config', 'controllers_gazebo.yaml']
     )
@@ -320,16 +193,6 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
     launch_description.add_action(spawn_joint_state_broadcaster)
     launch_description.add_action(spawn_effort_joint_controller)
 
-    #Nodo necesario para mandar a home junto a moveit
-    tuck_arm = Node(
-        package="tiago_pro_gazebo",
-        executable="tuck_arm.py",
-        emulate_tty=True,
-        output="both",
-        condition=IfCondition(LaunchConfiguration('tuck_arm'))
-    )
-
-    #launch_description.add_action(tuck_arm)
 
     return
 
