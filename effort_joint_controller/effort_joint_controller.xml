@@ -1,0 +1,12 @@
+<library path="effort_joint_controller">
+  <class name="effort_joint_controller/EffortJointController"
+         type="effort_joint_controller::EffortJointController"
+         base_class_type="controller_interface::ControllerInterface">
+    <description>
+      An effort (torque) controller that accepts joint torque commands via a
+      std_msgs/Float64MultiArray ROS 2 topic. Falls back to zero torques
+      (gravity compensation) when no command is received. Works on both the
+      real TiagoPro robot and in Gazebo simulation.
+    </description>
+  </class>
+</library>

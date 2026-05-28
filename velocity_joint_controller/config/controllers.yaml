@@ -1,0 +1,13 @@
+# Real-robot configuration for VelocityJointController.
+# Passed via --param-file to the spawner. The spawner reads
+# velocity_joint_controller.ros__parameters.type and sets it on the
+# controller_manager before calling load_controller.
+
+velocity_joint_controller:
+  ros__parameters:
+    type: velocity_joint_controller/VelocityJointController
+    robot_type: 'tiago_pro'
+    arm_prefix: ''
+    filter_coeff: 1.0  # IIR coefficient [0,1]: 1.0=no filter, 0.0=hold
+    publish_rate: 500.0  # Hz: max rate at which commands are written to hardware (TriggerRate)
+    velocity_limits: [2.175, 2.175, 2.175, 2.175, 2.61, 2.61, 2.61]  # rad/s, TiagoPro

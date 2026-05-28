@@ -1,0 +1,13 @@
+<library path="velocity_joint_controller">
+  <class name="velocity_joint_controller/VelocityJointController"
+         type="velocity_joint_controller::VelocityJointController"
+         base_class_type="controller_interface::ControllerInterface">
+    <description>
+      A velocity controller that accepts joint velocity commands via a
+      std_msgs/Float64MultiArray ROS 2 topic (7 values in rad/s).
+      On activation it initialises to zero velocities so the robot holds
+      its current pose until the first command arrives.
+      Works on both the real TiagoPro robot and in Gazebo simulation.
+    </description>
+  </class>
+</library>
