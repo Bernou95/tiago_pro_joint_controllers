@@ -69,11 +69,7 @@ class LaunchArguments(LaunchArgumentsBase):
     world_name: DeclareLaunchArgument = CommonArgs.world_name
     tuck_arm: DeclareLaunchArgument = CommonArgs.tuck_arm
     is_public_sim: DeclareLaunchArgument = CommonArgs.is_public_sim
-<<<<<<< HEAD
     #gazebo_version: DeclareLaunchArgument = CommonArgs.gazebo_version
-=======
-    gazebo_version: DeclareLaunchArgument = CommonArgs.gazebo_version
->>>>>>> origin/main
 
 
 def private_navigation(context, *args, **kwargs):
