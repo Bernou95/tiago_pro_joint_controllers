@@ -112,6 +112,12 @@ def generate_launch_description():
     # ld.add_action(SetEnvironmentVariable('GAZEBO_RESOURCE_PATH', resource_path))
 
     ld.add_action(start_gazebo_server_cmd)
+<<<<<<< HEAD
+    ld.add_action(start_gazebo_client_cmd)
+
+    return ld
+=======
     #ld.add_action(start_gazebo_client_cmd)
 
     return ld
+>>>>>>> origin/main
