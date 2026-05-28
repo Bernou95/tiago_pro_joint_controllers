@@ -133,13 +133,9 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
     robot_name = "tiago_pro"
     packages = ["tiago_pro_description", "pal_sea_arm_description",
                 "omni_base_description", "pal_pro_gripper_description",
-<<<<<<< HEAD
                 "tiago_pro_head_description", "allegro_hand_description",
                 "pal_urdf_utils"]
 
-=======
-                "tiago_pro_head_description"]
->>>>>>> origin/main
 
     model_path = get_model_paths(packages)
 
@@ -158,7 +154,6 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
         })
 
     launch_description.add_action(gazebo)
-<<<<<<< HEAD
     
     move_group = include_scoped_launch_py_description(
         pkg_name="tiago_pro_moveit_config",
@@ -177,8 +172,6 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
         condition=IfCondition(LaunchConfiguration("moveit")))
 
     launch_description.add_action(move_group)
-=======
->>>>>>> origin/main
 
 
     robot_spawn = include_scoped_launch_py_description(
@@ -268,8 +261,4 @@ def generate_launch_description():
 
     declare_actions(ld, launch_arguments)
 
-<<<<<<< HEAD
     return ld
-=======
-    return ld
->>>>>>> origin/main
