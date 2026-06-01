@@ -1,0 +1,13 @@
+<library path="motion_controller_interface">
+  <class
+    name="motion_controller_interface/MotionControllerInterface"
+    type="motion_controller_interface::MotionControllerInterface"
+    base_class_type="controller_interface::ControllerInterface">
+    <description>
+      Coordinator controller that manages switching between a position controller and an
+      effort controller. Subscribes to ~/set_mode (std_msgs/Int32: 0=position, 1=effort),
+      calls the controller_manager switch_controller service, and auto-reverts to position
+      if effort commands stop arriving within the configured timeout.
+    </description>
+  </class>
+</library>

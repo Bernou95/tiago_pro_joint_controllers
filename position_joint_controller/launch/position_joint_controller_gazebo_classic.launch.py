@@ -171,7 +171,7 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
         },
         condition=IfCondition(LaunchConfiguration("moveit")))
 
-    launch_description.add_action(move_group)
+    #launch_description.add_action(move_group)
 
 
     robot_spawn = include_scoped_launch_py_description(

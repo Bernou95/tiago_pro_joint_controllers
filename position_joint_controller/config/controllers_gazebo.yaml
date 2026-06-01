@@ -33,6 +33,6 @@ position_joint_controller:
     state_interfaces:
       - position
     filter_coeff: 1.0  # IIR coefficient [0,1]: 1.0=no filter, 0.0=hold
-    update_rate: 10  # Hz: max rate at which commands are written to hardware (TriggerRate)
+    update_rate: 100  # Hz: max rate at which commands are written to hardware (TriggerRate)
     position_limits_lower: [-4.7123, -2.4434, -2.6179, -2.4434, -1.5708, -1.8849, -2.6179]  # rad, TiagoPro
     position_limits_upper: [0.5235, 1.1344, 2.6179, 1.1344, 3.6651, 3.0019, 2.6179]  # rad, TiagoPro

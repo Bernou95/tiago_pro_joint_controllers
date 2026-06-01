@@ -1,0 +1,20 @@
+# Configuration for the MotionControllerInterface coordinator plugin.
+# Passed via --param-file to the spawner alongside the multi-controller YAML.
+#
+# Mode values published to ~/set_mode (std_msgs/Int32):
+#   0 = position  (default, always safe)
+#   1 = effort    (torque control — reverts to position on command timeout)
+#   2 = velocity  (velocity control — reverts to position on command timeout)
+
+motion_controller_interface:
+  ros__parameters:
+    type: motion_controller_interface/MotionControllerInterface
+    position_controller_name: position_joint_controller
+    effort_controller_name: effort_joint_controller
+    velocity_controller_name: velocity_joint_controller
+    # Seconds without a command before auto-reverting to position mode.
+    # Applies to both effort and velocity modes. Set to 0 to disable.
+    command_timeout: 0.5
+    controller_manager_topic: /controller_manager
+    effort_commands_topic: /effort_joint_controller/commands
+    velocity_commands_topic: /velocity_joint_controller/commands

@@ -68,7 +68,7 @@ class LaunchArguments(LaunchArgumentsBase):
     world_name: DeclareLaunchArgument = CommonArgs.world_name
     tuck_arm: DeclareLaunchArgument = CommonArgs.tuck_arm
     is_public_sim: DeclareLaunchArgument = CommonArgs.is_public_sim
-    gazebo_version: DeclareLaunchArgument = CommonArgs.gazebo_version
+    #gazebo_version: DeclareLaunchArgument = CommonArgs.gazebo_version
 
 
 def private_navigation(context, *args, **kwargs):
@@ -141,7 +141,7 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
         "GAZEBO_MODEL_PATH", model_path)
 
     gazebo = include_scoped_launch_py_description(
-        pkg_name="pal_gazebo_worlds",
+        pkg_name="position_joint_controller",
         paths=["launch", "pal_gazebo.launch.py"],
         env_vars=[gazebo_model_path_env_var],
         launch_arguments={
@@ -189,6 +189,7 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
         arguments=['effort_joint_controller', '--param-file', controllers_yaml],
         output='screen',
     )
+
 
     launch_description.add_action(spawn_joint_state_broadcaster)
     launch_description.add_action(spawn_effort_joint_controller)

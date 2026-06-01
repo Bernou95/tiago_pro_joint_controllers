@@ -88,6 +88,14 @@ class EffortJointController : public controller_interface::ControllerInterface {
   rclcpp::Subscription<tiago_pro_joint_controllers_msgs::msg::JointCommand>::SharedPtr
       commands_subscriber_;
 
+  // --- Gravity compensation ---
+  // When enabled, gravity torques from an external topic are added to commanded
+  // torques before rate saturation. The combined torque is re-clamped to limits.
+  bool use_gravity_compensation_{false};
+  realtime_tools::RealtimeBuffer<std::array<double, kNumJoints>> gravity_buffer_;
+  rclcpp::Subscription<tiago_pro_joint_controllers_msgs::msg::JointCommand>::SharedPtr
+      gravity_compensation_sub_;
+
   // Clamps the torque derivative to ±delta_tau_max per control cycle.
   [[nodiscard]] std::array<double, kNumJoints> saturateTorqueRate(
       const std::array<double, kNumJoints>& target,
