@@ -12,18 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Multi-controller Gazebo Classic launch.
+# Multi-controller Gazebo Classic launch — single or dual arm.
 #
-# Spawns:
-#   - joint_state_broadcaster         (always active)
-#   - position_joint_controller        (active — default safe mode)
-#   - effort_joint_controller          (loaded inactive — activated via MotionControllerInterface)
-#   - motion_controller_interface      (always active — coordinator/switcher)
+# For each controlled arm spawns:
+#   arm_{side}_position_joint_controller  (active — default safe mode)
+#   arm_{side}_velocity_joint_controller  (loaded inactive)
+#   arm_{side}_effort_joint_controller    (loaded inactive)
+#   arm_{side}_motion_controller_interface (always active — coordinator)
+# Plus one shared joint_state_broadcaster.
 #
-# Switch to effort mode at runtime:
-#   ros2 topic pub --once /motion_controller_interface/set_mode std_msgs/msg/Int32 "{data: 1}"
-# Switch back to position mode:
-#   ros2 topic pub --once /motion_controller_interface/set_mode std_msgs/msg/Int32 "{data: 0}"
+# Switch arm mode at runtime (std_msgs/Int32: 0=position  1=effort  2=velocity):
+#   ros2 topic pub --once /arm_left_motion_controller_interface/set_mode  \
+#       std_msgs/msg/Int32 "{data: 1}"
+#   ros2 topic pub --once /arm_right_motion_controller_interface/set_mode \
+#       std_msgs/msg/Int32 "{data: 1}"
+#
+# Usage:
+#   ros2 launch effort_joint_controller multi_controller_gazebo_classic.launch.py \
+#       arm_side:=both    # (default)
+#   ros2 launch effort_joint_controller multi_controller_gazebo_classic.launch.py \
+#       arm_side:=left
+#   ros2 launch effort_joint_controller multi_controller_gazebo_classic.launch.py \
+#       arm_side:=right
 
 import os
 from os import environ, pathsep
@@ -33,8 +43,9 @@ from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     SetEnvironmentVariable,
+    OpaqueFunction,
 )
-from launch.substitutions import PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -60,7 +71,6 @@ class LaunchArguments(LaunchArgumentsBase):
     wrist_model_left: DeclareLaunchArgument = TiagoProArgs.wrist_model_left
     camera_model: DeclareLaunchArgument = TiagoProArgs.camera_model
     laser_model: DeclareLaunchArgument = TiagoProArgs.laser_model
-
     is_public_sim: DeclareLaunchArgument = CommonArgs.is_public_sim
 
 
@@ -76,8 +86,45 @@ def get_model_paths(packages_names):
     return model_paths
 
 
-def declare_actions(launch_description: LaunchDescription, launch_args: LaunchArguments):
+def spawn_controllers(context):
+    arm_side = context.perform_substitution(LaunchConfiguration('arm_side'))
+    pkg = FindPackageShare('effort_joint_controller')
 
+    def _spawner(name, yaml_path, inactive=False):
+        args = [name, '--param-file', yaml_path]
+        if inactive:
+            args.insert(1, '--inactive')
+        return Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=args,
+            output='screen',
+        )
+
+    def _arm_set(side, yaml_path):
+        return [
+            _spawner(f'arm_{side}_position_joint_controller', yaml_path),
+            _spawner(f'arm_{side}_velocity_joint_controller', yaml_path, inactive=True),
+            _spawner(f'arm_{side}_effort_joint_controller', yaml_path, inactive=True),
+            _spawner(f'arm_{side}_motion_controller_interface', yaml_path),
+        ]
+
+    if arm_side == 'left':
+        yaml = PathJoinSubstitution([pkg, 'config', 'left_arm_multi_controllers_gazebo.yaml'])
+        return [_spawner('joint_state_broadcaster', yaml)] + _arm_set('left', yaml)
+    elif arm_side == 'right':
+        yaml = PathJoinSubstitution([pkg, 'config', 'right_arm_multi_controllers_gazebo.yaml'])
+        return [_spawner('joint_state_broadcaster', yaml)] + _arm_set('right', yaml)
+    else:  # both
+        yaml = PathJoinSubstitution([pkg, 'config', 'dual_arm_multi_controllers_gazebo.yaml'])
+        return (
+            [_spawner('joint_state_broadcaster', yaml)]
+            + _arm_set('left', yaml)
+            + _arm_set('right', yaml)
+        )
+
+
+def declare_actions(launch_description: LaunchDescription, launch_args: LaunchArguments):
     packages = [
         "tiago_pro_description", "pal_sea_arm_description",
         "omni_base_description", "pal_pro_gripper_description",
@@ -117,67 +164,18 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
     )
     launch_description.add_action(robot_state_publisher)
 
-    controllers_yaml = PathJoinSubstitution(
-        [FindPackageShare('effort_joint_controller'), 'config', 'multi_controllers_gazebo.yaml']
-    )
-
-    # Always-active: publishes joint states.
-    spawn_joint_state_broadcaster = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['joint_state_broadcaster', '--param-file', controllers_yaml],
-        output='screen',
-    )
-
-    # Default active controller: holds the arm safely in position.
-    spawn_position_controller = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['position_joint_controller', '--param-file', controllers_yaml],
-        output='screen',
-    )
-
-    # Loaded but inactive: activated by MotionControllerInterface on demand.
-    spawn_velocity_controller_inactive = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=[
-            'velocity_joint_controller',
-            '--inactive',
-            '--param-file', controllers_yaml,
-        ],
-        output='screen',
-    )
-
-    spawn_effort_controller_inactive = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=[
-            'effort_joint_controller',
-            '--inactive',
-            '--param-file', controllers_yaml,
-        ],
-        output='screen',
-    )
-
-    # Coordinator: handles mode switching and command-timeout watchdog.
-    spawn_motion_controller_interface = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['motion_controller_interface', '--param-file', controllers_yaml],
-        output='screen',
-    )
-
-    launch_description.add_action(spawn_joint_state_broadcaster)
-    launch_description.add_action(spawn_position_controller)
-    launch_description.add_action(spawn_velocity_controller_inactive)
-    launch_description.add_action(spawn_effort_controller_inactive)
-    launch_description.add_action(spawn_motion_controller_interface)
+    launch_description.add_action(OpaqueFunction(function=spawn_controllers))
 
 
 def generate_launch_description():
     ld = LaunchDescription()
     launch_arguments = LaunchArguments()
     launch_arguments.add_to_launch_description(ld)
+    ld.add_action(DeclareLaunchArgument(
+        'arm_side',
+        default_value='both',
+        choices=['left', 'right', 'both'],
+        description='Which arm(s) to control: left, right, or both (default).',
+    ))
     declare_actions(ld, launch_arguments)
     return ld

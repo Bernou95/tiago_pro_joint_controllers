@@ -44,7 +44,9 @@ namespace velocity_joint_controller {
  *
  * Parameters:
  *   robot_type       (string,              default "tiago_pro")
- *   arm_prefix       (string,              default "")
+ *   arm_prefix       (string,              default "") — hardware prefix without trailing
+ *                    underscore, e.g. "arm_left" or "arm_right". Empty string means no
+ *                    prefix (joints named 1_joint … 7_joint on real hardware).
  *   filter_coeff     (double, [0,1],       default 1.0 – no filter)
  *   velocity_limits  (double[7], rad/s,    default TiagoPro)
  *   publish_rate     (double, Hz, >0,      default 500.0) – max rate at which

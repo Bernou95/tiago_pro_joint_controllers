@@ -12,14 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Launch file for the EffortJointController in Gazebo simulation.
+# Launch file for the EffortJointController in Gazebo (Ignition / Gz) simulation.
 #
-# The effort command interface in Gazebo requires gazebo_effort:=true in the
-# URDF xacro. The spawner --param-file mechanism sets the type on the
-# controller_manager dynamically before load_controller is called.
+# The effort command interface requires gazebo_effort:=true in the URDF xacro.
 #
 # Usage:
-#   ros2 launch effort_joint_controller effort_joint_controller_gazebo.launch.py
+#   ros2 launch effort_joint_controller effort_joint_controller_gazebo.launch.py \
+#       arm_side:=both    # (default)
+#   ros2 launch effort_joint_controller effort_joint_controller_gazebo.launch.py \
+#       arm_side:=left
+#   ros2 launch effort_joint_controller effort_joint_controller_gazebo.launch.py \
+#       arm_side:=right
 
 import os
 
@@ -75,6 +78,40 @@ def get_robot_description(context: LaunchContext, robot_type, load_gripper, end_
     return [robot_state_publisher]
 
 
+def spawn_controllers(context):
+    arm_side = context.perform_substitution(LaunchConfiguration('arm_side'))
+    pkg = FindPackageShare('effort_joint_controller')
+
+    def _spawner(name, yaml_path):
+        return Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=[name, '--controller-manager-timeout', '60', '--param-file', yaml_path],
+            output='screen',
+        )
+
+    if arm_side == 'left':
+        yaml = PathJoinSubstitution([pkg, 'config', 'left_arm_gazebo.yaml'])
+        return [
+            _spawner('joint_state_broadcaster', yaml),
+            _spawner('arm_left_effort_joint_controller', yaml),
+        ]
+    elif arm_side == 'right':
+        yaml = PathJoinSubstitution([pkg, 'config', 'right_arm_gazebo.yaml'])
+        return [
+            _spawner('joint_state_broadcaster', yaml),
+            _spawner('arm_right_effort_joint_controller', yaml),
+        ]
+    else:  # both
+        yaml_left = PathJoinSubstitution([pkg, 'config', 'left_arm_gazebo.yaml'])
+        yaml_right = PathJoinSubstitution([pkg, 'config', 'right_arm_gazebo.yaml'])
+        return [
+            _spawner('joint_state_broadcaster', yaml_left),
+            _spawner('arm_left_effort_joint_controller', yaml_left),
+            _spawner('arm_right_effort_joint_controller', yaml_right),
+        ]
+
+
 def generate_launch_description():
     robot_type_arg = DeclareLaunchArgument('robot_type', default_value='tiago_pro',
                                            description='Robot model (tiago_pro, …)')
@@ -82,6 +119,12 @@ def generate_launch_description():
                                              description='Load TiagoPro gripper')
     end_effector_arg = DeclareLaunchArgument('end_effector', default_value='tiago_pro_hand',
                                              description='End-effector id')
+    arm_side_arg = DeclareLaunchArgument(
+        'arm_side',
+        default_value='both',
+        choices=['left', 'right', 'both'],
+        description='Which arm(s) to control: left, right, or both (default).',
+    )
 
     robot_type = LaunchConfiguration('robot_type')
     load_gripper = LaunchConfiguration('load_gripper')
@@ -127,32 +170,6 @@ def generate_launch_description():
         arguments=['--display-config', rviz_file, '-f', 'world'],
     )
 
-    controllers_yaml = PathJoinSubstitution(
-        [FindPackageShare('effort_joint_controller'), 'config', 'controllers_gazebo.yaml']
-    )
-
-    spawn_joint_state_broadcaster = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=[
-            'joint_state_broadcaster',
-            '--controller-manager-timeout', '60',
-            '--param-file', controllers_yaml,
-        ],
-        output='screen',
-    )
-
-    spawn_effort_joint_controller = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=[
-            'effort_joint_controller',
-            '--controller-manager-timeout', '60',
-            '--param-file', controllers_yaml,
-        ],
-        output='screen',
-    )
-
     joint_state_publisher = Node(
         package='joint_state_publisher',
         executable='joint_state_publisher',
@@ -160,10 +177,13 @@ def generate_launch_description():
         parameters=[{'source_list': ['joint_states'], 'rate': 30}],
     )
 
+    controller_spawners = OpaqueFunction(function=spawn_controllers)
+
     return LaunchDescription([
         robot_type_arg,
         load_gripper_arg,
         end_effector_arg,
+        arm_side_arg,
         gazebo,
         robot_state_publisher,
         rviz,
@@ -173,13 +193,7 @@ def generate_launch_description():
         RegisterEventHandler(
             event_handler=OnProcessExit(
                 target_action=spawn,
-                on_exit=[spawn_joint_state_broadcaster],
-            )
-        ),
-        RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=spawn_joint_state_broadcaster,
-                on_exit=[spawn_effort_joint_controller],
+                on_exit=[controller_spawners],
             )
         ),
     ])

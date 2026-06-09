@@ -1,0 +1,10 @@
+# Real-robot configuration for VelocityJointController — right arm.
+# Passed via --param-file to the spawner.
+
+arm_right_velocity_joint_controller:
+  ros__parameters:
+    type: velocity_joint_controller/VelocityJointController
+    arm_prefix: 'arm_right'
+    filter_coeff: 1.0
+    publish_rate: 500.0
+    velocity_limits: [2.175, 2.175, 2.175, 2.175, 2.61, 2.61, 2.61]  # rad/s, TiagoPro

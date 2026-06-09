@@ -41,7 +41,9 @@ namespace effort_joint_controller {
  *
  * Parameters:
  *   robot_type     (string,             default "tiago_pro")
- *   arm_prefix     (string,             default "")
+ *   arm_prefix     (string,             default "") — hardware prefix without trailing
+ *                  underscore, e.g. "arm_left" or "arm_right". Empty string means no
+ *                  prefix (joints named 1_joint … 7_joint on real hardware).
  *   effort_limits  (double[7], N*m,     default TiagoPro: [87,87,87,87,12,12,12])
  *   delta_tau_max  (double,   N*m/cycle, default 1.0)
  *   publish_rate   (double, Hz, >0,     default 500.0) – max rate at which

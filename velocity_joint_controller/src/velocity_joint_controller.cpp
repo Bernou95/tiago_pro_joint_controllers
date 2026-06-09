@@ -37,8 +37,7 @@ VelocityJointController::command_interface_configuration() const {
   controller_interface::InterfaceConfiguration config;
   config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
   for (int i = 1; i <= kNumJoints; ++i) {
-    config.names.push_back(arm_prefix_ + robot_type_ + "_joint" + std::to_string(i) +
-                           "/velocity");
+    config.names.push_back(arm_prefix_ + std::to_string(i) + "_joint/velocity");
   }
   return config;
 }
@@ -121,7 +120,7 @@ CallbackReturn VelocityJointController::on_configure(
   // Build expected joint name list for message validation.
   std::vector<std::string> expected_names;
   for (int i = 1; i <= kNumJoints; ++i) {
-    expected_names.push_back(arm_prefix_ + robot_type_ + "_joint" + std::to_string(i));
+    expected_names.push_back(arm_prefix_ + std::to_string(i) + "_joint");
   }
 
   commands_subscriber_ =

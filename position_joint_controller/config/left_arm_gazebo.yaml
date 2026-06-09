@@ -1,7 +1,6 @@
 # Gazebo configuration for PositionJointController.
 # Passed via --param-file to the spawner in the Gazebo launch file.
 # The position command interface is always available in Gazebo
-# (gazebo_effort:=true is NOT required).
 
 controller_manager:
   ros__parameters:
@@ -23,10 +22,9 @@ joint_state_broadcaster:
       - position
     type: joint_state_broadcaster/JointStateBroadcaster
 
-position_joint_controller:
+arm_left_position_joint_controller:
   ros__parameters:
     type: position_joint_controller/PositionJointController  # required: spawner reads type from here
-    robot_type: 'tiago_pro'
     arm_prefix: 'arm_left'
     command_interfaces:
       - position

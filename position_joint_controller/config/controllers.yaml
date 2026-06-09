@@ -10,5 +10,5 @@ position_joint_controller:
     arm_prefix: ''
     filter_coeff: 1.0  # IIR coefficient [0,1]: 1.0=no filter, 0.0=hold
     publish_rate: 100.0  # Hz: max rate at which commands are written to hardware (TriggerRate)
-    position_limits_lower: [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]  # rad, TiagoPro
-    position_limits_upper: [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973]  # rad, TiagoPro
+    position_limits_lower: [-4.7123, -2.4434, -2.6179, -2.4434, -1.5708, -1.8849, -2.6179]  # rad, TiagoPro
+    position_limits_upper: [0.5235, 1.1344, 2.6179, 1.1344, 3.6651, 3.0019, 2.6179]  # rad, TiagoPro

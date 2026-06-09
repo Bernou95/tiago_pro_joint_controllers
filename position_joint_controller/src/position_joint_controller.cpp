@@ -63,7 +63,7 @@ PositionJointController::state_interface_configuration() const {
 CallbackReturn PositionJointController::on_init() {
   try {
     auto_declare<std::string>("robot_type", "tiago_pro");
-    auto_declare<std::string>("arm_prefix", "left_arm");
+    auto_declare<std::string>("arm_prefix", "arm_left");
     auto_declare<double>("filter_coeff", 0.3);
     auto_declare<std::vector<double>>(
         "position_limits_lower",
