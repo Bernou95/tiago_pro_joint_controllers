@@ -150,6 +150,7 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
             "is_public_sim": "True",
         }
     )
+
     launch_description.add_action(robot_state_publisher)
 
     launch_description.add_action(OpaqueFunction(function=spawn_controllers))

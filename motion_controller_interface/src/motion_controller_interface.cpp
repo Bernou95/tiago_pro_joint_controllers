@@ -46,6 +46,8 @@ CallbackReturn MotionControllerInterface::on_init() {
     auto_declare<std::string>("position_controller_name", "position_joint_controller");
     auto_declare<std::string>("effort_controller_name",   "effort_joint_controller");
     auto_declare<std::string>("velocity_controller_name", "velocity_joint_controller");
+    auto_declare<std::string>("gravity_compensation_controller_name",
+                              "gravity_compensation_controller");
     auto_declare<double>("command_timeout",       0.5);
     auto_declare<double>("switch_overlap_duration", 0.2);
     auto_declare<std::string>("controller_manager_topic", "/controller_manager");
@@ -60,9 +62,11 @@ CallbackReturn MotionControllerInterface::on_init() {
 
 CallbackReturn MotionControllerInterface::on_configure(
     const rclcpp_lifecycle::State& /*previous_state*/) {
-  pos_ctrl_name_ = get_node()->get_parameter("position_controller_name").as_string();
-  eff_ctrl_name_ = get_node()->get_parameter("effort_controller_name").as_string();
-  vel_ctrl_name_ = get_node()->get_parameter("velocity_controller_name").as_string();
+  pos_ctrl_name_  = get_node()->get_parameter("position_controller_name").as_string();
+  eff_ctrl_name_  = get_node()->get_parameter("effort_controller_name").as_string();
+  vel_ctrl_name_  = get_node()->get_parameter("velocity_controller_name").as_string();
+  grav_ctrl_name_ =
+      get_node()->get_parameter("gravity_compensation_controller_name").as_string();
 
   const double timeout_s = get_node()->get_parameter("command_timeout").as_double();
   command_timeout_ns_ = static_cast<int64_t>(timeout_s * 1e9);
@@ -82,19 +86,20 @@ CallbackReturn MotionControllerInterface::on_configure(
       get_node()->create_client<controller_manager_msgs::srv::SwitchController>(
           cm_topic + "/switch_controller");
 
-  // Subscribe to mode commands: 0=position, 1=effort, 2=velocity.
+  // Subscribe to mode commands: 0=position, 1=effort, 2=velocity, 3=gravity_compensation.
   mode_sub_ = get_node()->create_subscription<std_msgs::msg::Int32>(
       "~/set_mode", rclcpp::SystemDefaultsQoS(),
       [this](const std_msgs::msg::Int32::SharedPtr msg) {
         const int mode = msg->data;
-        if (mode < kPositionMode || mode > kVelocityMode) {
+        if (mode < kPositionMode || mode > kGravityCompensationMode) {
           RCLCPP_WARN(get_node()->get_logger(),
-                      "Unknown mode %d — must be 0 (position), 1 (effort), or 2 (velocity).",
+                      "Unknown mode %d — must be 0 (position), 1 (effort), "
+                      "2 (velocity), or 3 (gravity_compensation).",
                       mode);
           return;
         }
         requested_mode_.store(mode);
-        const char* names[] = {"position", "effort", "velocity"};
+        const char* names[] = {"position", "effort", "velocity", "gravity_compensation"};
         RCLCPP_INFO(get_node()->get_logger(), "Mode change requested: %s.", names[mode]);
       });
 
@@ -120,10 +125,12 @@ CallbackReturn MotionControllerInterface::on_configure(
 
   RCLCPP_INFO(get_node()->get_logger(),
               "MotionControllerInterface configured. "
-              "position='%s' effort='%s' velocity='%s' timeout=%.2f s overlap=%.2f s. "
-              "Publish std_msgs/Int32 to ~/set_mode (0=position, 1=effort, 2=velocity).",
+              "position='%s' effort='%s' velocity='%s' gravity_compensation='%s' "
+              "timeout=%.2f s overlap=%.2f s. "
+              "Publish std_msgs/Int32 to ~/set_mode "
+              "(0=position, 1=effort, 2=velocity, 3=gravity_compensation).",
               pos_ctrl_name_.c_str(), eff_ctrl_name_.c_str(), vel_ctrl_name_.c_str(),
-              timeout_s, overlap_s);
+              grav_ctrl_name_.c_str(), timeout_s, overlap_s);
   return CallbackReturn::SUCCESS;
 }
 
@@ -159,9 +166,10 @@ controller_interface::return_type MotionControllerInterface::update(
 
 const std::string& MotionControllerInterface::ctrlForMode(int mode) const {
   switch (mode) {
-    case kEffortMode:   return eff_ctrl_name_;
-    case kVelocityMode: return vel_ctrl_name_;
-    default:            return pos_ctrl_name_;
+    case kEffortMode:              return eff_ctrl_name_;
+    case kVelocityMode:            return vel_ctrl_name_;
+    case kGravityCompensationMode: return grav_ctrl_name_;
+    default:                       return pos_ctrl_name_;
   }
 }
 
@@ -235,7 +243,7 @@ void MotionControllerInterface::watchdog() {
 
   // Apply a pending mode change via two-phase overlap switch.
   if (desired != current) {
-    const char* names[] = {"position", "effort", "velocity"};
+    const char* names[] = {"position", "effort", "velocity", "gravity_compensation"};
     RCLCPP_INFO(get_node()->get_logger(), "Switching: %s → %s (overlap %.0f ms).",
                 names[current], names[desired],
                 static_cast<double>(switch_overlap_ns_) / 1e6);
@@ -266,13 +274,15 @@ void MotionControllerInterface::watchdog() {
   }
 
   // Safety watchdog: revert to position if active-mode commands stop.
-  if (current != kPositionMode && command_timeout_ns_ > 0) {
+  // Only applies to effort and velocity modes — gravity_compensation has no
+  // commands topic and stays active until a different mode is requested.
+  if ((current == kEffortMode || current == kVelocityMode) && command_timeout_ns_ > 0) {
     const int64_t last_ns = (current == kEffortMode)
                                 ? last_effort_cmd_ns_.load()
                                 : last_velocity_cmd_ns_.load();
     const int64_t elapsed_ns = get_node()->now().nanoseconds() - last_ns;
     if (elapsed_ns > command_timeout_ns_) {
-      const char* names[] = {"position", "effort", "velocity"};
+      const char* names[] = {"position", "effort", "velocity", "gravity_compensation"};
       RCLCPP_WARN(get_node()->get_logger(),
                   "%s command timeout (%.1f s) — reverting to position.",
                   names[current], static_cast<double>(command_timeout_ns_) / 1e9);

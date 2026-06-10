@@ -4,7 +4,7 @@
 # Passed via --param-file to all spawner calls in multi_controller_gazebo_classic.launch.py.
 #
 # Mode switching (publish std_msgs/Int32 to /arm_left_motion_controller_interface/set_mode):
-#   0 = position (default)   1 = effort   2 = velocity
+#   0 = position (default)   1 = effort   2 = velocity   3 = gravity_compensation
 
 controller_manager:
   ros__parameters:
@@ -23,6 +23,7 @@ joint_state_broadcaster:
       - arm_left_7_joint
     interfaces:
       - position
+      - velocity
     type: joint_state_broadcaster/JointStateBroadcaster
 
 arm_left_position_joint_controller:
@@ -70,6 +71,7 @@ arm_left_motion_controller_interface:
     position_controller_name: arm_left_position_joint_controller
     velocity_controller_name: arm_left_velocity_joint_controller
     effort_controller_name: arm_left_effort_joint_controller
+    gravity_compensation_controller_name: arm_left_gravity_compensation_controller
     command_timeout: 0.5
     switch_overlap_duration: 0.3
     controller_manager_topic: /controller_manager

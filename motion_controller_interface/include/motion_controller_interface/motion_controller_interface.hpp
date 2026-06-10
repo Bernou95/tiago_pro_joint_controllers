@@ -29,7 +29,8 @@ namespace motion_controller_interface {
 
 /**
  * Coordinator ros2_control plugin that handles runtime switching between a
- * position controller, a velocity controller, and an effort controller.
+ * position controller, a velocity controller, an effort controller, and a
+ * gravity-compensation controller.
  *
  * Claims no hardware interfaces. All real work runs in non-RT callbacks:
  *   - 10 Hz watchdog timer: applies pending mode switches and checks command timeout.
@@ -37,20 +38,24 @@ namespace motion_controller_interface {
  *       0 = position mode
  *       1 = effort mode
  *       2 = velocity mode
+ *       3 = gravity-compensation mode
  *   - Effort / velocity command monitor subscriptions: reset the timeout clock.
  *
- * The safety timeout (command_timeout) applies equally to effort and velocity modes.
+ * The safety timeout (command_timeout) applies to effort and velocity modes only.
  * If no command is received on the active mode's topic within the timeout, the
- * controller reverts to position mode automatically.
+ * controller reverts to position mode automatically. Gravity-compensation mode
+ * has no commands topic and so is not timed out — it stays active until the
+ * user requests a different mode.
  *
  * Parameters:
- *   position_controller_name  (string,  default "position_joint_controller")
- *   effort_controller_name    (string,  default "effort_joint_controller")
- *   velocity_controller_name  (string,  default "velocity_joint_controller")
- *   command_timeout           (double,  default 0.5 s — 0 disables timeout)
- *   controller_manager_topic  (string,  default "/controller_manager")
- *   effort_commands_topic     (string,  default "/effort_joint_controller/commands")
- *   velocity_commands_topic   (string,  default "/velocity_joint_controller/commands")
+ *   position_controller_name             (string,  default "position_joint_controller")
+ *   effort_controller_name               (string,  default "effort_joint_controller")
+ *   velocity_controller_name             (string,  default "velocity_joint_controller")
+ *   gravity_compensation_controller_name (string,  default "gravity_compensation_controller")
+ *   command_timeout                      (double,  default 0.5 s — 0 disables timeout)
+ *   controller_manager_topic             (string,  default "/controller_manager")
+ *   effort_commands_topic                (string,  default "/effort_joint_controller/commands")
+ *   velocity_commands_topic              (string,  default "/velocity_joint_controller/commands")
  */
 class MotionControllerInterface : public controller_interface::ControllerInterface {
  public:
@@ -69,13 +74,15 @@ class MotionControllerInterface : public controller_interface::ControllerInterfa
   CallbackReturn on_deactivate(const rclcpp_lifecycle::State& previous_state) override;
 
  private:
-  static constexpr int kPositionMode  = 0;
-  static constexpr int kEffortMode    = 1;
-  static constexpr int kVelocityMode  = 2;
+  static constexpr int kPositionMode             = 0;
+  static constexpr int kEffortMode               = 1;
+  static constexpr int kVelocityMode             = 2;
+  static constexpr int kGravityCompensationMode  = 3;
 
   std::string pos_ctrl_name_{"position_joint_controller"};
   std::string eff_ctrl_name_{"effort_joint_controller"};
   std::string vel_ctrl_name_{"velocity_joint_controller"};
+  std::string grav_ctrl_name_{"gravity_compensation_controller"};
   int64_t command_timeout_ns_{500000000LL};    // 0.5 s
   // How long the incoming and outgoing controllers overlap during a switch.
   // During this window both position (holding) and effort/velocity (ramping up)

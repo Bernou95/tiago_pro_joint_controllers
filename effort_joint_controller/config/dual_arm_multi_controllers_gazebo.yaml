@@ -5,8 +5,8 @@
 # Controller naming follows the arm_left_* / arm_right_* prefix convention.
 #
 # Mode switching per arm (publish std_msgs/Int32):
-#   /arm_left_motion_controller_interface/set_mode  →  0=position  1=effort  2=velocity
-#   /arm_right_motion_controller_interface/set_mode →  0=position  1=effort  2=velocity
+#   /arm_left_motion_controller_interface/set_mode  →  0=position  1=effort  2=velocity  3=gravity_compensation
+#   /arm_right_motion_controller_interface/set_mode →  0=position  1=effort  2=velocity  3=gravity_compensation
 
 controller_manager:
   ros__parameters:
@@ -34,6 +34,7 @@ joint_state_broadcaster:
       - arm_right_7_joint
     interfaces:
       - position
+      - velocity
 
 # ── LEFT ARM ────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ arm_left_motion_controller_interface:
     position_controller_name: arm_left_position_joint_controller
     velocity_controller_name: arm_left_velocity_joint_controller
     effort_controller_name: arm_left_effort_joint_controller
+    gravity_compensation_controller_name: arm_left_gravity_compensation_controller
     command_timeout: 0.5
     switch_overlap_duration: 0.3
     controller_manager_topic: /controller_manager
@@ -141,6 +143,7 @@ arm_right_motion_controller_interface:
     position_controller_name: arm_right_position_joint_controller
     velocity_controller_name: arm_right_velocity_joint_controller
     effort_controller_name: arm_right_effort_joint_controller
+    gravity_compensation_controller_name: arm_right_gravity_compensation_controller
     command_timeout: 0.5
     switch_overlap_duration: 0.3
     controller_manager_topic: /controller_manager

@@ -15,13 +15,15 @@
 # Multi-controller Gazebo Classic launch — single or dual arm.
 #
 # For each controlled arm spawns:
-#   arm_{side}_position_joint_controller  (active — default safe mode)
-#   arm_{side}_velocity_joint_controller  (loaded inactive)
-#   arm_{side}_effort_joint_controller    (loaded inactive)
-#   arm_{side}_motion_controller_interface (always active — coordinator)
+#   arm_{side}_position_joint_controller          (active — default safe mode)
+#   arm_{side}_velocity_joint_controller          (loaded inactive)
+#   arm_{side}_effort_joint_controller            (loaded inactive)
+#   arm_{side}_gravity_compensation_controller    (loaded inactive — PAL's launcher)
+#   arm_{side}_motion_controller_interface        (always active — coordinator)
 # Plus one shared joint_state_broadcaster.
 #
-# Switch arm mode at runtime (std_msgs/Int32: 0=position  1=effort  2=velocity):
+# Switch arm mode at runtime
+# (std_msgs/Int32: 0=position  1=effort  2=velocity  3=gravity_compensation):
 #   ros2 topic pub --once /arm_left_motion_controller_interface/set_mode  \
 #       std_msgs/msg/Int32 "{data: 1}"
 #   ros2 topic pub --once /arm_right_motion_controller_interface/set_mode \
@@ -101,11 +103,28 @@ def spawn_controllers(context):
             output='screen',
         )
 
+    def _grav_comp(side):
+        # Re-uses PAL's gravity_compensation_controller.launch.py from the docker image.
+        # That launcher loads the controller as a ros2_control plugin; it is expected
+        # to be inactive after loading (matches PAL's joy_teleop change_controllers
+        # pattern) so the MotionControllerInterface can activate it via set_mode=3.
+        wrist_arg = context.perform_substitution(
+            LaunchConfiguration(f'wrist_model_{side}'))
+        return include_scoped_launch_py_description(
+            pkg_name='pal_sea_arm_controller_configuration',
+            paths=['launch', 'gravity_compensation_controller.launch.py'],
+            launch_arguments={
+                'side': side,
+                'root_link': 'torso_lift_link',
+                'wrist_model': wrist_arg,
+            })
+
     def _arm_set(side, yaml_path):
         return [
             _spawner(f'arm_{side}_position_joint_controller', yaml_path),
             _spawner(f'arm_{side}_velocity_joint_controller', yaml_path, inactive=True),
             _spawner(f'arm_{side}_effort_joint_controller', yaml_path, inactive=True),
+            _grav_comp(side),
             _spawner(f'arm_{side}_motion_controller_interface', yaml_path),
         ]
 
