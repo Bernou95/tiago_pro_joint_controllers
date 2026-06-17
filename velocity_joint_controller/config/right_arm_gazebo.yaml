@@ -27,4 +27,4 @@ arm_right_velocity_joint_controller:
     arm_prefix: 'arm_right'
     filter_coeff: 1.0     # IIR coefficient [0,1]: 1.0=no filter, 0.0=hold
     publish_rate: 500.0   # Hz
-    velocity_limits: [2.175, 2.175, 2.175, 2.175, 2.61, 2.61, 2.61]  # rad/s, TiagoPro
+    velocity_limits: [1.95, 1.95, 3.95, 3.95, 3.95, 3.95, 3.95]  # rad/s, TiagoPro

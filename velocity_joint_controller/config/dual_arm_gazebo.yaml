@@ -35,8 +35,8 @@ arm_left_velocity_joint_controller:
     type: velocity_joint_controller/VelocityJointController
     arm_prefix: 'arm_left'
     filter_coeff: 1.0
-    publish_rate: 500.0   # Hz
-    velocity_limits: [2.175, 2.175, 2.175, 2.175, 2.61, 2.61, 2.61]  # rad/s
+    publish_rate: 200.0   # Hz
+    velocity_limits: [1.95, 1.95, 3.95, 3.95, 3.95, 3.95, 3.95]  # rad/s
 
 # ── RIGHT ARM ────────────────────────────────────────────────────────────────
 
@@ -45,5 +45,5 @@ arm_right_velocity_joint_controller:
     type: velocity_joint_controller/VelocityJointController
     arm_prefix: 'arm_right'
     filter_coeff: 1.0
-    publish_rate: 500.0   # Hz
-    velocity_limits: [2.175, 2.175, 2.175, 2.175, 2.61, 2.61, 2.61]  # rad/s
+    publish_rate: 200.0   # Hz
+    velocity_limits: [1.95, 1.95, 3.95, 3.95, 3.95, 3.95, 3.95]  # rad/s

@@ -6,5 +6,5 @@ arm_left_velocity_joint_controller:
     type: velocity_joint_controller/VelocityJointController
     arm_prefix: 'arm_left'
     filter_coeff: 1.0
-    publish_rate: 500.0
-    velocity_limits: [2.175, 2.175, 2.175, 2.175, 2.61, 2.61, 2.61]  # rad/s, TiagoPro
+    publish_rate: 200.0
+    velocity_limits: [1.95, 1.95, 3.95, 3.95, 3.95, 3.95, 3.95]  # rad/s, TiagoPro
