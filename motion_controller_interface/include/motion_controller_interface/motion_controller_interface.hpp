@@ -103,16 +103,15 @@ class MotionControllerInterface : public controller_interface::ControllerInterfa
   rclcpp::Subscription<tiago_pro_joint_controllers_msgs::msg::JointCommand>::SharedPtr
       velocity_cmd_sub_;
   rclcpp::TimerBase::SharedPtr watchdog_timer_;
-  // One-shot timer that fires after switch_overlap_ns_ to deactivate the old controller.
-  rclcpp::TimerBase::SharedPtr deactivate_timer_;
 
   // Returns the controller name that corresponds to the given mode.
   [[nodiscard]] const std::string& ctrlForMode(int mode) const;
 
-  // Phase-1: activate the incoming controller only (old controller still running).
-  void activateController(const std::string& activate);
-  // Phase-2: deactivate the outgoing controller (called after overlap window).
-  void deactivateController(const std::string& deactivate);
+  // Activate incoming and deactivate outgoing in one SwitchController call.
+  // A single call is required because PAL's GazeboSystem::perform_command_mode_switch
+  // zeroes the entire joint_control_method_ word on stop (not just the relevant bit),
+  // so a two-phase switch erases the mode bit set in phase 1 when phase 2 runs.
+  void switchController(const std::string& activate, const std::string& deactivate);
 
   // Watchdog callback (10 Hz): applies pending mode switches and enforces timeout.
   void watchdog();

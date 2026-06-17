@@ -173,7 +173,15 @@ const std::string& MotionControllerInterface::ctrlForMode(int mode) const {
   }
 }
 
-void MotionControllerInterface::activateController(const std::string& activate) {
+void MotionControllerInterface::switchController(const std::string& activate,
+                                                  const std::string& deactivate) {
+  // PAL's GazeboSystem::perform_command_mode_switch() zeroes the entire
+  // joint_control_method_ word when processing stop_interfaces (instead of
+  // only clearing that interface's bit).  A two-phase switch — activate first,
+  // deactivate second — therefore erases the effort/velocity bit set in phase 1
+  // when phase 2 runs.  Sending both in a single SwitchController call causes
+  // perform_command_mode_switch to be invoked once: it writes 0 (stop), then
+  // writes the correct mode bit (start), leaving the right value in place.
   if (!switch_client_->service_is_ready()) {
     RCLCPP_WARN_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 2000,
                          "switch_controller service not ready — cannot switch yet.");
@@ -182,37 +190,6 @@ void MotionControllerInterface::activateController(const std::string& activate) 
   }
   auto req = std::make_shared<controller_manager_msgs::srv::SwitchController::Request>();
   req->activate_controllers   = {activate};
-  req->deactivate_controllers = {};
-  req->strictness =
-      controller_manager_msgs::srv::SwitchController::Request::BEST_EFFORT;
-  req->activate_asap = false;
-
-  switch_client_->async_send_request(
-      req,
-      [this, activate](
-          rclcpp::Client<controller_manager_msgs::srv::SwitchController>::SharedFuture f) {
-        if (!f.get()->ok) {
-          RCLCPP_ERROR(get_node()->get_logger(),
-                       "Phase-1 switch failed: could not activate '%s'.", activate.c_str());
-          switch_in_progress_.store(false);
-          return;
-        }
-        RCLCPP_INFO(get_node()->get_logger(), "Phase-1: '%s' activated (overlap window open).",
-                    activate.c_str());
-        // Phase-2 fires after the overlap window.
-      });
-}
-
-void MotionControllerInterface::deactivateController(const std::string& deactivate) {
-  if (!switch_client_->service_is_ready()) {
-    RCLCPP_WARN(get_node()->get_logger(),
-                "switch_controller not ready during phase-2 deactivation of '%s'.",
-                deactivate.c_str());
-    switch_in_progress_.store(false);
-    return;
-  }
-  auto req = std::make_shared<controller_manager_msgs::srv::SwitchController::Request>();
-  req->activate_controllers   = {};
   req->deactivate_controllers = {deactivate};
   req->strictness =
       controller_manager_msgs::srv::SwitchController::Request::BEST_EFFORT;
@@ -220,33 +197,33 @@ void MotionControllerInterface::deactivateController(const std::string& deactiva
 
   switch_client_->async_send_request(
       req,
-      [this, deactivate](
+      [this, activate, deactivate](
           rclcpp::Client<controller_manager_msgs::srv::SwitchController>::SharedFuture f) {
         if (f.get()->ok) {
           RCLCPP_INFO(get_node()->get_logger(),
-                      "Phase-2: '%s' deactivated. Switch complete.", deactivate.c_str());
+                      "Switch complete: '%s' → '%s'.",
+                      deactivate.c_str(), activate.c_str());
         } else {
           RCLCPP_ERROR(get_node()->get_logger(),
-                       "Phase-2 switch failed: could not deactivate '%s'.",
-                       deactivate.c_str());
+                       "Switch failed: '%s' → '%s'.",
+                       deactivate.c_str(), activate.c_str());
         }
         switch_in_progress_.store(false);
       });
 }
 
 void MotionControllerInterface::watchdog() {
-  // Block re-entry while a two-phase switch is in progress.
+  // Block re-entry while a switch is in progress.
   if (switch_in_progress_.load()) return;
 
   const int desired = requested_mode_.load();
   const int current = current_mode_.load();
 
-  // Apply a pending mode change via two-phase overlap switch.
+  // Apply a pending mode change via a single atomic switch_controller call.
   if (desired != current) {
     const char* names[] = {"position", "effort", "velocity", "gravity_compensation"};
-    RCLCPP_INFO(get_node()->get_logger(), "Switching: %s → %s (overlap %.0f ms).",
-                names[current], names[desired],
-                static_cast<double>(switch_overlap_ns_) / 1e6);
+    RCLCPP_INFO(get_node()->get_logger(), "Switching: %s → %s.",
+                names[current], names[desired]);
 
     switch_in_progress_.store(true);
     current_mode_.store(desired);  // Mark as switched so timeout clock starts.
@@ -256,20 +233,7 @@ void MotionControllerInterface::watchdog() {
     if (desired == kEffortMode)   last_effort_cmd_ns_.store(now_ns);
     if (desired == kVelocityMode) last_velocity_cmd_ns_.store(now_ns);
 
-    const std::string incoming = ctrlForMode(desired);
-    const std::string outgoing = ctrlForMode(current);
-
-    // Phase 1: activate the incoming controller (outgoing still running = no torque gap).
-    activateController(incoming);
-
-    // Phase 2: deactivate the outgoing controller after the overlap window.
-    const auto overlap = std::chrono::nanoseconds(switch_overlap_ns_);
-    deactivate_timer_ = get_node()->create_wall_timer(
-        overlap, [this, outgoing]() {
-          deactivate_timer_->cancel();
-          deactivate_timer_.reset();
-          deactivateController(outgoing);
-        });
+    switchController(ctrlForMode(desired), ctrlForMode(current));
     return;
   }
 
