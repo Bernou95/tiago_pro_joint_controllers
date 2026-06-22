@@ -26,7 +26,7 @@
 
 import os
 from os import environ, pathsep
-from ament_index_python.packages import get_package_prefix
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import (
@@ -159,8 +159,26 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
     )
     launch_description.add_action(robot_state_publisher)
 
+    # Mobile base controller
+    launch_description.add_action(OpaqueFunction(function=launch_mobile_base_controller))
+
     launch_description.add_action(OpaqueFunction(function=spawn_controllers))
 
+def launch_mobile_base_controller(context, *args, **kwargs):
+    # PAL's mobile_base_controller.launch.py gates the OmniDriveController behind
+    # UnlessCondition(use_sim_time), so it never spawns in simulation. We bypass
+    # that gate and spawn the controller directly so the wheel joints are commanded
+    # to zero velocity, preventing arm reaction forces from rotating the base.
+    base_type = context.perform_substitution(LaunchConfiguration('base_type'))
+    pkg = get_package_share_directory(base_type + '_controller_configuration')
+    yaml_path = os.path.join(pkg, 'config', 'mobile_base_controller.yaml')
+
+    return [Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['mobile_base_controller', '--param-file', yaml_path],
+        output='screen',
+    )]
 
 def get_model_paths(packages_names):
     model_paths = ""

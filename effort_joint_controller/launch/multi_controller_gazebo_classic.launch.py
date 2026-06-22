@@ -39,11 +39,12 @@
 
 import os
 from os import environ, pathsep
-from ament_index_python.packages import get_package_prefix
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    ExecuteProcess,
     SetEnvironmentVariable,
     OpaqueFunction,
 )
@@ -90,6 +91,7 @@ def get_model_paths(packages_names):
 
 def spawn_controllers(context):
     arm_side = context.perform_substitution(LaunchConfiguration('arm_side'))
+    full     = context.perform_substitution(LaunchConfiguration('full_controllers')) == 'true'
     pkg = FindPackageShare('effort_joint_controller')
 
     def _spawner(name, yaml_path, inactive=False):
@@ -130,17 +132,38 @@ def spawn_controllers(context):
 
     if arm_side == 'left':
         yaml = PathJoinSubstitution([pkg, 'config', 'left_arm_multi_controllers_gazebo.yaml'])
-        return [_spawner('joint_state_broadcaster', yaml)] + _arm_set('left', yaml)
+        nodes = [_spawner('joint_state_broadcaster', yaml)] + _arm_set('left', yaml)
     elif arm_side == 'right':
         yaml = PathJoinSubstitution([pkg, 'config', 'right_arm_multi_controllers_gazebo.yaml'])
-        return [_spawner('joint_state_broadcaster', yaml)] + _arm_set('right', yaml)
+        nodes = [_spawner('joint_state_broadcaster', yaml)] + _arm_set('right', yaml)
     else:  # both
         yaml = PathJoinSubstitution([pkg, 'config', 'dual_arm_multi_controllers_gazebo.yaml'])
-        return (
+        nodes = (
             [_spawner('joint_state_broadcaster', yaml)]
             + _arm_set('left', yaml)
             + _arm_set('right', yaml)
         )
+
+    # Always spawn: keeps base from yawing under arm reaction forces.
+    base_type = context.perform_substitution(LaunchConfiguration('base_type'))
+    base_yaml = os.path.join(
+        get_package_share_directory(base_type + '_controller_configuration'),
+        'config', 'mobile_base_controller.yaml')
+    nodes.append(_spawner('mobile_base_controller', base_yaml))
+
+    if full:
+        head_yaml  = os.path.join(
+            get_package_share_directory('tiago_pro_head_controller_configuration'),
+            'config', 'head_controller.yaml')
+        torso_yaml = os.path.join(
+            get_package_share_directory('tiago_pro_controller_configuration'),
+            'config', 'torso_controller.yaml')
+        nodes += [
+            _spawner('head_controller',  head_yaml),
+            _spawner('torso_controller', torso_yaml),
+        ]
+
+    return nodes
 
 
 def declare_actions(launch_description: LaunchDescription, launch_args: LaunchArguments):
@@ -185,6 +208,20 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
 
     launch_description.add_action(OpaqueFunction(function=spawn_controllers))
 
+    # gazebo_ros_planar_move directly calls SetLinearVel/SetAngularVel on the base
+    # every physics step, overriding any arm reaction forces. It subscribes to
+    # cmd_vel_unstamped (not cmd_vel). Publishing zero here locks the base in place.
+    launch_description.add_action(ExecuteProcess(
+        cmd=[
+            'ros2', 'topic', 'pub',
+            '/mobile_base_controller/cmd_vel_unstamped',
+            'geometry_msgs/msg/Twist',
+            '{}',
+            '--rate', '100',
+        ],
+        output='log',
+    ))
+
 
 def generate_launch_description():
     ld = LaunchDescription()
@@ -195,6 +232,12 @@ def generate_launch_description():
         default_value='both',
         choices=['left', 'right', 'both'],
         description='Which arm(s) to control: left, right, or both (default).',
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'full_controllers',
+        default_value='false',
+        choices=['true', 'false'],
+        description='Also spawn head, torso, and mobile base controllers.',
     ))
     declare_actions(ld, launch_arguments)
     return ld
