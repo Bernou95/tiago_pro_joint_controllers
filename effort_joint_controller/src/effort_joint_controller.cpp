@@ -193,6 +193,9 @@ CallbackReturn EffortJointController::on_activate(
 
 controller_interface::return_type EffortJointController::update(const rclcpp::Time& /*time*/,
                                                                 const rclcpp::Duration& period) {
+  // TriggerRate: skip writing until enough time has accumulated since the
+  // last write, so hardware writes happen at publish_rate even if update()
+  // is called faster by the controller_manager.
   accumulated_period_ns_ += period.nanoseconds();
   if (accumulated_period_ns_ < write_period_ns_) {
     return controller_interface::return_type::OK;
@@ -232,6 +235,8 @@ std::array<double, EffortJointController::kNumJoints> EffortJointController::sat
     const std::array<double, kNumJoints>& prev) const {
   std::array<double, kNumJoints> out{};
   for (int i = 0; i < kNumJoints; ++i) {
+    // Clamp the per-cycle torque delta to ±delta_tau_max so a large jump in
+    // the commanded torque doesn't trip the hardware's safety stop.
     const double diff = target[i] - prev[i];
     out[i] = prev[i] + std::max(std::min(diff, delta_tau_max_), -delta_tau_max_);
   }
