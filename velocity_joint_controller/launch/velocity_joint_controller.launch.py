@@ -14,22 +14,24 @@
 
 # Real-robot launcher for VelocityJointController.
 #
-# Brings up the TiagoPro and spawns velocity controller(s) for one or both arms.
+# Spawns velocity controller(s) for one or both arms onto the controller_manager
+# that is already running on the robot (brought up by PAL's own system modules
+# at boot). This package is deployed and run locally on the robot, so no robot
+# IP or remote bringup is needed here.
 #
 # Usage:
 #   ros2 launch velocity_joint_controller velocity_joint_controller.launch.py \
-#       robot_ip:=<IP> arm_side:=both   # (default) both arms
+#       arm_side:=both   # (default) both arms
 #   ros2 launch velocity_joint_controller velocity_joint_controller.launch.py \
-#       robot_ip:=<IP> arm_side:=left
+#       arm_side:=left
 #   ros2 launch velocity_joint_controller velocity_joint_controller.launch.py \
-#       robot_ip:=<IP> arm_side:=right
+#       arm_side:=right
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from launch_pal.include_utils import include_launch_py_description
 
 
 def spawn_controllers(context):
@@ -66,49 +68,14 @@ def spawn_controllers(context):
 
 
 def generate_launch_description():
-    robot_ip_arg = DeclareLaunchArgument(
-        'robot_ip',
-        description='IP address of the TiagoPro robot',
-    )
-    robot_type_arg = DeclareLaunchArgument(
-        'robot_type',
-        default_value='tiago_pro',
-        description='Robot model (tiago_pro, ...)',
-    )
     arm_side_arg = DeclareLaunchArgument(
         'arm_side',
         default_value='both',
         choices=['left', 'right', 'both'],
         description='Which arm(s) to control: left, right, or both (default).',
     )
-    load_gripper_arg = DeclareLaunchArgument(
-        'load_gripper',
-        default_value='false',
-        description='Load TiagoPro gripper',
-    )
-    use_fake_hardware_arg = DeclareLaunchArgument(
-        'use_fake_hardware',
-        default_value='false',
-        description='Use fake hardware instead of real robot',
-    )
-
-    bringup = include_launch_py_description(
-        pkg_name='tiago_pro_bringup',
-        paths=['launch', 'tiago_pro.launch.py'],
-        launch_arguments={
-            'robot_ip': LaunchConfiguration('robot_ip'),
-            'robot_type': LaunchConfiguration('robot_type'),
-            'load_gripper': LaunchConfiguration('load_gripper'),
-            'use_fake_hardware': LaunchConfiguration('use_fake_hardware'),
-        },
-    )
 
     return LaunchDescription([
-        robot_ip_arg,
-        robot_type_arg,
         arm_side_arg,
-        load_gripper_arg,
-        use_fake_hardware_arg,
-        bringup,
         OpaqueFunction(function=spawn_controllers),
     ])

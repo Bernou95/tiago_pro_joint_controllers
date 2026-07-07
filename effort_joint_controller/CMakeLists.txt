@@ -45,6 +45,18 @@ ament_target_dependencies(
 pluginlib_export_plugin_description_file(
   controller_interface effort_joint_controller.xml)
 
+# Register this package's real-robot multi-controller launch file as a PAL
+# startup module (share/effort_joint_controller/module/arm_controllers.yaml),
+# so it can be enabled/disabled the same way as PAL's own modules (e.g.
+# `pal module disable/activate`). Guarded so this package still builds in a
+# plain ROS 2 Humble workspace where pal_module_cmake isn't installed.
+find_package(pal_module_cmake QUIET)
+if(pal_module_cmake_FOUND)
+  pal_register_modules(
+    "module/arm_controllers.yaml"
+  )
+endif()
+
 install(
   TARGETS ${PROJECT_NAME}
   RUNTIME DESTINATION bin

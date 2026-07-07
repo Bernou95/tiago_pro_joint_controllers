@@ -25,8 +25,8 @@
 namespace effort_joint_controller {
 
 // TiagoPro per-joint torque limits in N*m
-static constexpr std::array<double, 7> kDefaultEffortLimits{87.0, 87.0, 87.0, 87.0,
-                                                              12.0, 12.0, 12.0};
+static constexpr std::array<double, 7> kDefaultEffortLimits{43.0, 43.0, 26.0, 26.0,
+                                                              26.0, 26.0, 26.0};
 
 // ---------------------------------------------------------------------------
 // Interface configuration
