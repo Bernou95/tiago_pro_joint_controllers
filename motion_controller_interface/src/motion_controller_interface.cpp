@@ -48,11 +48,13 @@ CallbackReturn MotionControllerInterface::on_init() {
     auto_declare<std::string>("velocity_controller_name", "velocity_joint_controller");
     auto_declare<std::string>("gravity_compensation_controller_name",
                               "gravity_compensation_controller");
+    auto_declare<int>("default_mode", kGravityCompensationMode);
     auto_declare<double>("command_timeout",       0.5);
     auto_declare<double>("switch_overlap_duration", 0.2);
     auto_declare<std::string>("controller_manager_topic", "/controller_manager");
     auto_declare<std::string>("effort_commands_topic",    "/effort_joint_controller/commands");
     auto_declare<std::string>("velocity_commands_topic",  "/velocity_joint_controller/commands");
+    auto_declare<std::string>("pal_arm_controller_name",  "");
   } catch (const std::exception& e) {
     RCLCPP_ERROR(get_node()->get_logger(), "on_init exception: %s", e.what());
     return CallbackReturn::ERROR;
@@ -68,6 +70,15 @@ CallbackReturn MotionControllerInterface::on_configure(
   grav_ctrl_name_ =
       get_node()->get_parameter("gravity_compensation_controller_name").as_string();
 
+  default_mode_ = static_cast<int>(get_node()->get_parameter("default_mode").as_int());
+  if (default_mode_ < kPositionMode || default_mode_ > kGravityCompensationMode) {
+    RCLCPP_WARN(get_node()->get_logger(),
+                "Invalid default_mode %d — must be 0 (position), 1 (effort), 2 (velocity), "
+                "or 3 (gravity_compensation). Falling back to position.",
+                default_mode_);
+    default_mode_ = kPositionMode;
+  }
+
   const double timeout_s = get_node()->get_parameter("command_timeout").as_double();
   command_timeout_ns_ = static_cast<int64_t>(timeout_s * 1e9);
 
@@ -80,6 +91,8 @@ CallbackReturn MotionControllerInterface::on_configure(
       get_node()->get_parameter("effort_commands_topic").as_string();
   const std::string velocity_cmd_topic =
       get_node()->get_parameter("velocity_commands_topic").as_string();
+
+  pal_arm_ctrl_name_ = get_node()->get_parameter("pal_arm_controller_name").as_string();
 
   // Service client for switching controllers.
   switch_client_ =
@@ -126,18 +139,20 @@ CallbackReturn MotionControllerInterface::on_configure(
   RCLCPP_INFO(get_node()->get_logger(),
               "MotionControllerInterface configured. "
               "position='%s' effort='%s' velocity='%s' gravity_compensation='%s' "
-              "timeout=%.2f s overlap=%.2f s. "
+              "pal_arm_controller='%s' default_mode=%d timeout=%.2f s overlap=%.2f s. "
               "Publish std_msgs/Int32 to ~/set_mode "
               "(0=position, 1=effort, 2=velocity, 3=gravity_compensation).",
               pos_ctrl_name_.c_str(), eff_ctrl_name_.c_str(), vel_ctrl_name_.c_str(),
-              grav_ctrl_name_.c_str(), timeout_s, overlap_s);
+              grav_ctrl_name_.c_str(),
+              pal_arm_ctrl_name_.empty() ? "(none)" : pal_arm_ctrl_name_.c_str(),
+              default_mode_, timeout_s, overlap_s);
   return CallbackReturn::SUCCESS;
 }
 
 CallbackReturn MotionControllerInterface::on_activate(
     const rclcpp_lifecycle::State& /*previous_state*/) {
-  requested_mode_.store(kPositionMode);
-  current_mode_.store(kPositionMode);
+  requested_mode_.store(default_mode_);
+  current_mode_.store(default_mode_);
   switch_in_progress_.store(false);
   const int64_t now_ns = get_node()->now().nanoseconds();
   last_effort_cmd_ns_.store(now_ns);
@@ -191,6 +206,14 @@ void MotionControllerInterface::switchController(const std::string& activate,
   auto req = std::make_shared<controller_manager_msgs::srv::SwitchController::Request>();
   req->activate_controllers   = {activate};
   req->deactivate_controllers = {deactivate};
+
+  // PAL's own arm_{side}_controller claims the same `position` command interface and
+  // is active by default alongside this coordinator (see pal_arm_controller_name doc).
+  // It only conflicts with position mode, so only fold it into the deactivate list here.
+  if (!pal_arm_ctrl_name_.empty() && activate == pos_ctrl_name_) {
+    req->deactivate_controllers.push_back(pal_arm_ctrl_name_);
+  }
+
   req->strictness =
       controller_manager_msgs::srv::SwitchController::Request::BEST_EFFORT;
   req->activate_asap = false;
@@ -237,7 +260,7 @@ void MotionControllerInterface::watchdog() {
     return;
   }
 
-  // Safety watchdog: revert to position if active-mode commands stop.
+  // Safety watchdog: revert to default if active-mode commands stop.
   // Only applies to effort and velocity modes — gravity_compensation has no
   // commands topic and stays active until a different mode is requested.
   if ((current == kEffortMode || current == kVelocityMode) && command_timeout_ns_ > 0) {
@@ -248,9 +271,9 @@ void MotionControllerInterface::watchdog() {
     if (elapsed_ns > command_timeout_ns_) {
       const char* names[] = {"position", "effort", "velocity", "gravity_compensation"};
       RCLCPP_WARN(get_node()->get_logger(),
-                  "%s command timeout (%.1f s) — reverting to position.",
+                  "%s command timeout (%.1f s) — reverting to gravity_compensation.",
                   names[current], static_cast<double>(command_timeout_ns_) / 1e9);
-      requested_mode_.store(kPositionMode);
+      requested_mode_.store(kGravityCompensationMode);
     }
   }
 }

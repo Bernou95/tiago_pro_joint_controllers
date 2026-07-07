@@ -52,10 +52,26 @@ namespace motion_controller_interface {
  *   effort_controller_name               (string,  default "effort_joint_controller")
  *   velocity_controller_name             (string,  default "velocity_joint_controller")
  *   gravity_compensation_controller_name (string,  default "gravity_compensation_controller")
+ *   default_mode                         (int,     default 0 — the mode assumed active on
+ *                                         activation: 0=position, 1=effort, 2=velocity,
+ *                                         3=gravity_compensation. Must match whichever of the
+ *                                         four controllers was actually spawned active, or the
+ *                                         first requested switch will compute the wrong
+ *                                         deactivate target.)
  *   command_timeout                      (double,  default 0.5 s — 0 disables timeout)
  *   controller_manager_topic             (string,  default "/controller_manager")
  *   effort_commands_topic                (string,  default "/effort_joint_controller/commands")
  *   velocity_commands_topic              (string,  default "/velocity_joint_controller/commands")
+ *   pal_arm_controller_name              (string,  default "" — disabled. On the real robot,
+ *                                         PAL's own arm_{side}_controller (a
+ *                                         JointTrajectoryController) claims the same `position`
+ *                                         command interface as position_controller_name and is
+ *                                         active by default alongside this coordinator. If set,
+ *                                         it is added to the deactivate list whenever switching
+ *                                         TO position mode (and only then — effort, velocity, and
+ *                                         gravity_compensation modes don't conflict with it),
+ *                                         so the claim is released atomically in the same
+ *                                         switch_controller call instead of being left active.)
  */
 class MotionControllerInterface : public controller_interface::ControllerInterface {
  public:
@@ -83,6 +99,10 @@ class MotionControllerInterface : public controller_interface::ControllerInterfa
   std::string eff_ctrl_name_{"effort_joint_controller"};
   std::string vel_ctrl_name_{"velocity_joint_controller"};
   std::string grav_ctrl_name_{"gravity_compensation_controller"};
+  // PAL's own arm_{side}_controller name, if any — see pal_arm_controller_name doc above.
+  std::string pal_arm_ctrl_name_{""};
+  // Mode assumed active on activation; read from the "default_mode" parameter.
+  int default_mode_{kPositionMode};
   int64_t command_timeout_ns_{500000000LL};    // 0.5 s
   // How long the incoming and outgoing controllers overlap during a switch.
   // During this window both position (holding) and effort/velocity (ramping up)
