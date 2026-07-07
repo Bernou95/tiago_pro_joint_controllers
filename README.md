@@ -17,7 +17,7 @@ This package provides that layer:
 - **`tiago_pro_joint_controllers_msgs`** — the single message type (`JointCommand`) shared by all three command topics.
 - **`tiago_pro_joint_controllers`** — meta-package that pulls all of the above together as one dependency.
 
-Everything here is built against TiagoPro's 7-DOF arm joint naming (`{arm_prefix}1_joint` … `{arm_prefix}7_joint`) and is meant to run alongside PAL's own bringup stack (`tiago_pro_bringup`), either on the real robot or in Gazebo Classic.
+Everything here is built against TiagoPro's 7-DOF arm joint naming (`{arm_prefix}1_joint` … `{arm_prefix}7_joint`) and is meant to run alongside PAL's own system stack, either on the real robot (registered as the `arm_controllers` PAL startup module, see [Directory & File Structure](#3-directory--file-structure)) or in Gazebo Classic.
 
 ## 2. Data Interface
 
@@ -58,7 +58,10 @@ tiago_pro_joint_controllers/            # this repo
 │   ├── src/effort_joint_controller.cpp           # implementation
 │   ├── effort_joint_controller.xml               # pluginlib export descriptor
 │   ├── config/*.yaml                             # per-arm / real-robot / Gazebo parameter sets
-│   └── launch/*.launch.py                        # real-robot and Gazebo Classic launchers
+│   ├── launch/*.launch.py                        # real-robot and Gazebo Classic launchers
+│   │   ├── multi_controller_real_robot.launch.py #   real robot: both arms + coordinator
+│   │   └── multi_controller_gazebo_classic.launch.py  # Gazebo: both arms + coordinator
+│   └── module/arm_controllers.yaml               # PAL startup module registration (real robot)
 ├── position_joint_controller/          # position control plugin (same layout as above)
 ├── velocity_joint_controller/          # velocity control plugin (same layout as above)
 └── motion_controller_interface/        # runtime mode-switch coordinator
@@ -73,10 +76,10 @@ Notes on the repeated per-controller layout (`effort_joint_controller`, `positio
 - **`include/<pkg>/<pkg>.hpp`** — the `ControllerInterface` subclass declaration; this is also where parameters and topics are documented in docstrings.
 - **`src/<pkg>.cpp`** — lifecycle callbacks (`on_init`, `on_configure`, `on_activate`[, `on_deactivate`]), the `update()` control loop, and the `PLUGINLIB_EXPORT_CLASS` registration.
 - **`<pkg>.xml`** — pluginlib plugin description, referenced from each `CMakeLists.txt` via `pluginlib_export_plugin_description_file()` and loaded by `controller_manager` at runtime.
-- **`config/`** — one YAML per scenario: `left_arm_controllers.yaml` / `right_arm_controllers.yaml` (real robot), `left_arm_gazebo.yaml` / `right_arm_gazebo.yaml` / `dual_arm_gazebo.yaml` (simulation), plus multi-controller variants for `effort_joint_controller` used when running position+effort+velocity together in Gazebo. See `9jun.md` for the naming-convention rationale.
-- **`launch/`** — Python launch files only (XML real-robot launchers were retired, see `9jun.md`). Each accepts an `arm_side` argument (`left`/`right`/`both`) that selects the matching config YAML via an `OpaqueFunction`.
+- **`config/`** — one YAML per scenario: `left_arm_controllers.yaml` / `right_arm_controllers.yaml` (real robot, single-controller), `left_arm_gazebo.yaml` / `right_arm_gazebo.yaml` / `dual_arm_gazebo.yaml` (simulation, single-controller), plus multi-controller variants for `effort_joint_controller`: `{left,right,dual}_arm_multi_controllers_gazebo.yaml` (Gazebo, position/velocity/effort + coordinator, arm-selectable) and `dual_arm_multi_controllers.yaml` (real robot, always both arms, gravity-compensation is the default active mode — see [Run — real robot](#run--real-robot)).
+- **`launch/`** — Python launch files only. The single-controller launchers accept an `arm_side` argument (`left`/`right`/`both`) that selects the matching config YAML via an `OpaqueFunction`; `multi_controller_real_robot.launch.py` takes no arguments and always spawns both arms.
+- **`effort_joint_controller/module/`** — PAL startup-module registration (`arm_controllers.yaml` + `pal_register_modules()` in `CMakeLists.txt`); see [Software Architecture](#4-software-architecture).
 
-`9jun.md` is a changelog describing the arm-agnostic multi-arm refactor; useful background but not required reading to use the package.
 
 ## 4. Software Architecture
 
@@ -123,16 +126,15 @@ Key architectural points:
 - **ros2_control stack**: `controller_interface`, `hardware_interface`, `controller_manager`, `controller_manager_msgs`.
 - **Common ROS 2 libs**: `rclcpp`, `rclcpp_lifecycle`, `pluginlib`, `realtime_tools`, `std_msgs`.
 - **Message generation**: `rosidl_default_generators` / `rosidl_default_runtime` (for `tiago_pro_joint_controllers_msgs`).
-- **PAL-specific**: `launch_pal` and `tiago_pro_bringup` (used by the real-robot launch files to bring up the robot description, hardware interface, and `controller_manager` before spawning these controllers).
+- **PAL-specific**: `launch_pal` and `pal_sea_arm_controller_configuration` (the latter's gravity-compensation controller yaml is reused directly by `multi_controller_real_robot.launch.py`). On the real robot, the robot description, hardware interface, and `controller_manager` are brought up independently by PAL's own system modules (`tiago_pro_controller_configuration`'s `default_controllers`, etc.) before any launch file in this package runs — this package never starts its own bringup.
 - **Simulation (optional)**: Gazebo Classic, for the `*_gazebo_classic.launch.py` / `*_gazebo.launch.py` launch files.
 
-All of the above — including `tiago_pro_bringup` and Gazebo Classic — are already provided in **PAL Robotics' official TiagoPro Docker development image**. The recommended setup is to clone this repo into that image's workspace `src/` rather than assembling the dependency stack manually outside of it.
+All of the above — including PAL's real-robot stack and Gazebo Classic — are already provided in **PAL Robotics' official TiagoPro Docker development image**. The recommended setup is to clone this repo into that image's workspace `src/` rather than assembling the dependency stack manually outside of it.
 
 ### Hardware
 
-- A TiagoPro robot with one or both 7-DOF arms, reachable over the network (`robot_ip` launch argument) — **or**
-- Gazebo Classic simulation of TiagoPro (no physical robot needed) — **or**
-- `use_fake_hardware:=true` for a hardware-less smoke test of the launch/control stack.
+- A TiagoPro robot, running this package locally (deployed onto the robot, not addressed over the network) with the `controller_manager` already active — **or**
+- Gazebo Classic simulation of TiagoPro (no physical robot needed).
 
 ## 6. Getting Started Guide
 
@@ -161,12 +163,23 @@ ros2 launch position_joint_controller position_joint_controller_gazebo_classic.l
 
 ### Run — real robot
 
+This package runs locally on the robot (no robot IP / remote bringup needed) and only spawns controllers onto the `controller_manager` that PAL's own system modules already brought up at boot.
+
 ```bash
-# Both arms, effort control
-ros2 launch effort_joint_controller effort_joint_controller.launch.py robot_ip:=<ROBOT_IP>
+# Recommended: both arms, gravity-compensation active by default, switch to
+# position/velocity/effort at runtime via each arm's motion_controller_interface.
+# PAL's default_controllers module (base/torso/head/arms) is left running as-is —
+# its arm_{side}_controller only conflicts with our position mode (both claim the
+# `position` command interface), and motion_controller_interface's
+# pal_arm_controller_name parameter releases that one claim atomically whenever
+# position mode is requested. Run directly, or via `pal module activate arm_controllers`:
+ros2 launch effort_joint_controller multi_controller_real_robot.launch.py
+
+# Single-controller / debug use (one controller, one or both arms, no coordinator):
+ros2 launch effort_joint_controller effort_joint_controller.launch.py
 
 # Right arm only, velocity control
-ros2 launch velocity_joint_controller velocity_joint_controller.launch.py robot_ip:=<ROBOT_IP> arm_side:=right
+ros2 launch velocity_joint_controller velocity_joint_controller.launch.py arm_side:=right
 ```
 
 ### Verify it's running
