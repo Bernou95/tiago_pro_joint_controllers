@@ -1,0 +1,10 @@
+# Real-robot configuration for EffortJointController — left arm.
+# Passed via --param-file to the spawner.
+
+arm_left_effort_joint_controller:
+  ros__parameters:
+    type: effort_joint_controller/EffortJointController
+    arm_prefix: 'arm_left'
+    effort_limits: [43.0, 43.0, 26.0, 26.0, 26.0, 26.0, 26.0]  # N*m, TiagoPro per-joint limits
+    delta_tau_max: 1.0
+    publish_rate: 500.0

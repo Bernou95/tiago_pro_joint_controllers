@@ -9,6 +9,8 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <build_depend condition="$PAL_DISTRO >= alum">pal_module_cmake</build_depend>
+
   <depend>controller_interface</depend>
   <depend>tiago_pro_joint_controllers_msgs</depend>
   <depend>hardware_interface</depend>
@@ -16,6 +18,8 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>realtime_tools</depend>
+
+  <exec_depend>pal_sea_arm_controller_configuration</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

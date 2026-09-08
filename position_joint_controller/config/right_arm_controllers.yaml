@@ -1,0 +1,11 @@
+# Real-robot configuration for PositionJointController — right arm.
+# Passed via --param-file to the spawner.
+
+arm_right_position_joint_controller:
+  ros__parameters:
+    type: position_joint_controller/PositionJointController
+    arm_prefix: 'arm_right'
+    filter_coeff: 1.0
+    publish_rate: 100.0
+    position_limits_lower: [-4.7123, -2.4434, -2.6179, -2.4434, -1.5708, -1.8849, -2.6179]
+    position_limits_upper: [0.5235, 1.1344, 2.6179, 1.1344, 3.6651, 3.0019, 2.6179]

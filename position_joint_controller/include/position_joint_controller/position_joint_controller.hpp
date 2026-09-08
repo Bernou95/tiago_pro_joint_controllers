@@ -44,7 +44,9 @@ namespace position_joint_controller {
  *
  * Parameters:
  *   robot_type        (string,             default "tiago_pro")
- *   arm_prefix        (string,             default "")
+ *   arm_prefix        (string,             default "arm_left") — hardware prefix without
+ *                     trailing underscore, e.g. "arm_left" or "arm_right". Empty string
+ *                     means no prefix (joints named 1_joint … 7_joint on real hardware).
  *   filter_coeff      (double, [0,1],      default 1.0 – no filter)
  *   position_limits_lower  (double[7], rad, default TiagoPro)
  *   position_limits_upper  (double[7], rad, default TiagoPro)

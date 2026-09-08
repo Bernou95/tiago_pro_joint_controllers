@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>motion_controller_interface</name>
+  <version>0.1.0</version>
+  <description>
+    A ros2_control coordinator plugin that manages mode switching between a position
+    and an effort joint controller. Provides an auto-revert-to-position safety watchdog
+    when effort commands stop arriving.
+  </description>
+  <maintainer email="todo@example.com">maintainer</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>controller_interface</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>pluginlib</depend>
+  <depend>controller_manager_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>tiago_pro_joint_controllers_msgs</depend>
+  <depend>realtime_tools</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

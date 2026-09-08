@@ -13,6 +13,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <exec_depend>tiago_pro_joint_controllers_msgs</exec_depend>
+  <exec_depend>motion_controller_interface</exec_depend>
   <exec_depend>effort_joint_controller</exec_depend>
   <exec_depend>position_joint_controller</exec_depend>
   <exec_depend>velocity_joint_controller</exec_depend>

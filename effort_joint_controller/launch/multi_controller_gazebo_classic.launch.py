@@ -1,4 +1,4 @@
-# Copyright (c) 2024 PAL Robotics S.L. All rights reserved.
+# Copyright (c) 2025
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,27 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Gazebo Classic launcher for EffortJointController (standalone — no coordinator).
+# Multi-controller Gazebo Classic launch — single or dual arm.
 #
-# Spawns only the effort controller(s) together with the joint_state_broadcaster.
-# For the full multi-controller setup with mode switching, use
-# multi_controller_gazebo_classic.launch.py instead.
+# For each controlled arm spawns:
+#   arm_{side}_position_joint_controller          (active — default safe mode)
+#   arm_{side}_velocity_joint_controller          (loaded inactive)
+#   arm_{side}_effort_joint_controller            (loaded inactive)
+#   arm_{side}_gravity_compensation_controller    (loaded inactive — PAL's launcher)
+#   arm_{side}_motion_controller_interface        (always active — coordinator)
+# Plus one shared joint_state_broadcaster.
+#
+# Switch arm mode at runtime
+# (std_msgs/Int32: 0=position  1=effort  2=velocity  3=gravity_compensation):
+#   ros2 topic pub --once /arm_left_motion_controller_interface/set_mode  \
+#       std_msgs/msg/Int32 "{data: 1}"
+#   ros2 topic pub --once /arm_right_motion_controller_interface/set_mode \
+#       std_msgs/msg/Int32 "{data: 1}"
 #
 # Usage:
-#   ros2 launch effort_joint_controller effort_joint_controller_gazebo_classic.launch.py \
-#       arm_side:=both    # (default) both arms
-#   ros2 launch effort_joint_controller effort_joint_controller_gazebo_classic.launch.py \
+#   ros2 launch effort_joint_controller multi_controller_gazebo_classic.launch.py \
+#       arm_side:=both    # (default)
+#   ros2 launch effort_joint_controller multi_controller_gazebo_classic.launch.py \
 #       arm_side:=left
-#   ros2 launch effort_joint_controller effort_joint_controller_gazebo_classic.launch.py \
+#   ros2 launch effort_joint_controller multi_controller_gazebo_classic.launch.py \
 #       arm_side:=right
 
 import os
 from os import environ, pathsep
-from ament_index_python.packages import get_package_prefix
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    ExecuteProcess,
     SetEnvironmentVariable,
     OpaqueFunction,
 )
@@ -79,37 +91,79 @@ def get_model_paths(packages_names):
 
 def spawn_controllers(context):
     arm_side = context.perform_substitution(LaunchConfiguration('arm_side'))
+    full     = context.perform_substitution(LaunchConfiguration('full_controllers')) == 'true'
     pkg = FindPackageShare('effort_joint_controller')
 
-    def _spawner(name, yaml_path):
+    def _spawner(name, yaml_path, inactive=False):
+        args = [name, '--param-file', yaml_path]
+        if inactive:
+            args.insert(1, '--inactive')
         return Node(
             package='controller_manager',
             executable='spawner',
-            arguments=[name, '--param-file', yaml_path],
+            arguments=args,
             output='screen',
         )
 
+    def _grav_comp(side):
+        # Re-uses PAL's gravity_compensation_controller.launch.py from the docker image.
+        # That launcher loads the controller as a ros2_control plugin; it is expected
+        # to be inactive after loading (matches PAL's joy_teleop change_controllers
+        # pattern) so the MotionControllerInterface can activate it via set_mode=3.
+        wrist_arg = context.perform_substitution(
+            LaunchConfiguration(f'wrist_model_{side}'))
+        return include_scoped_launch_py_description(
+            pkg_name='pal_sea_arm_controller_configuration',
+            paths=['launch', 'gravity_compensation_controller.launch.py'],
+            launch_arguments={
+                'side': side,
+                'root_link': 'torso_lift_link',
+                'wrist_model': wrist_arg,
+            })
+
+    def _arm_set(side, yaml_path):
+        return [
+            _spawner(f'arm_{side}_position_joint_controller', yaml_path),
+            _spawner(f'arm_{side}_velocity_joint_controller', yaml_path, inactive=True),
+            _spawner(f'arm_{side}_effort_joint_controller', yaml_path, inactive=True),
+            _grav_comp(side),
+            _spawner(f'arm_{side}_motion_controller_interface', yaml_path),
+        ]
+
     if arm_side == 'left':
-        yaml = PathJoinSubstitution([pkg, 'config', 'left_arm_gazebo.yaml'])
-        return [
-            _spawner('joint_state_broadcaster', yaml),
-            _spawner('arm_left_effort_joint_controller', yaml),
-        ]
+        yaml = PathJoinSubstitution([pkg, 'config', 'left_arm_multi_controllers_gazebo.yaml'])
+        nodes = [_spawner('joint_state_broadcaster', yaml)] + _arm_set('left', yaml)
     elif arm_side == 'right':
-        yaml = PathJoinSubstitution([pkg, 'config', 'right_arm_gazebo.yaml'])
-        return [
-            _spawner('joint_state_broadcaster', yaml),
-            _spawner('arm_right_effort_joint_controller', yaml),
+        yaml = PathJoinSubstitution([pkg, 'config', 'right_arm_multi_controllers_gazebo.yaml'])
+        nodes = [_spawner('joint_state_broadcaster', yaml)] + _arm_set('right', yaml)
+    else:  # both
+        yaml = PathJoinSubstitution([pkg, 'config', 'dual_arm_multi_controllers_gazebo.yaml'])
+        nodes = (
+            [_spawner('joint_state_broadcaster', yaml)]
+            + _arm_set('left', yaml)
+            + _arm_set('right', yaml)
+        )
+
+    # Always spawn: keeps base from yawing under arm reaction forces.
+    base_type = context.perform_substitution(LaunchConfiguration('base_type'))
+    base_yaml = os.path.join(
+        get_package_share_directory(base_type + '_controller_configuration'),
+        'config', 'mobile_base_controller.yaml')
+    nodes.append(_spawner('mobile_base_controller', base_yaml))
+
+    if full:
+        head_yaml  = os.path.join(
+            get_package_share_directory('tiago_pro_head_controller_configuration'),
+            'config', 'head_controller.yaml')
+        torso_yaml = os.path.join(
+            get_package_share_directory('tiago_pro_controller_configuration'),
+            'config', 'torso_controller.yaml')
+        nodes += [
+            _spawner('head_controller',  head_yaml),
+            _spawner('torso_controller', torso_yaml),
         ]
-    else:  # both — use left config for broadcaster (14-joint list not needed here;
-           # each single-arm yaml has its own broadcaster entry, so spawn twice)
-        yaml_left = PathJoinSubstitution([pkg, 'config', 'left_arm_gazebo.yaml'])
-        yaml_right = PathJoinSubstitution([pkg, 'config', 'right_arm_gazebo.yaml'])
-        return [
-            _spawner('joint_state_broadcaster', yaml_left),
-            _spawner('arm_left_effort_joint_controller', yaml_left),
-            _spawner('arm_right_effort_joint_controller', yaml_right),
-        ]
+
+    return nodes
 
 
 def declare_actions(launch_description: LaunchDescription, launch_args: LaunchArguments):
@@ -150,10 +204,23 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
             "is_public_sim": "True",
         }
     )
-
     launch_description.add_action(robot_state_publisher)
 
     launch_description.add_action(OpaqueFunction(function=spawn_controllers))
+
+    # gazebo_ros_planar_move directly calls SetLinearVel/SetAngularVel on the base
+    # every physics step, overriding any arm reaction forces. It subscribes to
+    # cmd_vel_unstamped (not cmd_vel). Publishing zero here locks the base in place.
+    launch_description.add_action(ExecuteProcess(
+        cmd=[
+            'ros2', 'topic', 'pub',
+            '/mobile_base_controller/cmd_vel_unstamped',
+            'geometry_msgs/msg/Twist',
+            '{}',
+            '--rate', '100',
+        ],
+        output='log',
+    ))
 
 
 def generate_launch_description():
@@ -165,6 +232,12 @@ def generate_launch_description():
         default_value='both',
         choices=['left', 'right', 'both'],
         description='Which arm(s) to control: left, right, or both (default).',
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'full_controllers',
+        default_value='false',
+        choices=['true', 'false'],
+        description='Also spawn head, torso, and mobile base controllers.',
     ))
     declare_actions(ld, launch_arguments)
     return ld

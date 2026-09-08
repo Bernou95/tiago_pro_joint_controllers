@@ -37,8 +37,7 @@ VelocityJointController::command_interface_configuration() const {
   controller_interface::InterfaceConfiguration config;
   config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
   for (int i = 1; i <= kNumJoints; ++i) {
-    config.names.push_back(arm_prefix_ + robot_type_ + "_joint" + std::to_string(i) +
-                           "/velocity");
+    config.names.push_back(arm_prefix_ + std::to_string(i) + "_joint/velocity");
   }
   return config;
 }
@@ -121,7 +120,7 @@ CallbackReturn VelocityJointController::on_configure(
   // Build expected joint name list for message validation.
   std::vector<std::string> expected_names;
   for (int i = 1; i <= kNumJoints; ++i) {
-    expected_names.push_back(arm_prefix_ + robot_type_ + "_joint" + std::to_string(i));
+    expected_names.push_back(arm_prefix_ + std::to_string(i) + "_joint");
   }
 
   commands_subscriber_ =
@@ -199,6 +198,9 @@ CallbackReturn VelocityJointController::on_deactivate(
 
 controller_interface::return_type VelocityJointController::update(
     const rclcpp::Time& /*time*/, const rclcpp::Duration& period) {
+  // TriggerRate: skip writing until enough time has accumulated since the
+  // last write, so hardware writes happen at publish_rate even if update()
+  // is called faster by the controller_manager.
   accumulated_period_ns_ += period.nanoseconds();
   if (accumulated_period_ns_ < write_period_ns_) {
     return controller_interface::return_type::OK;
@@ -209,6 +211,8 @@ controller_interface::return_type VelocityJointController::update(
   const double alpha = *filter_coeff_buffer_.readFromRT();
 
   for (int i = 0; i < kNumJoints; ++i) {
+    // First-order low-pass: blend the new target into the previous output by
+    // alpha (filter_coeff). alpha=1 means no filtering, alpha=0 means hold.
     filtered_commands_[i] = alpha * target[i] + (1.0 - alpha) * filtered_commands_[i];
     if (!command_interfaces_[i].set_value(filtered_commands_[i])) {
       RCLCPP_ERROR(get_node()->get_logger(), "Failed to set velocity command on interface '%s'.",

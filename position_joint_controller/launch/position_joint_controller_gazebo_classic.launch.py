@@ -12,10 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Gazebo Classic launcher for PositionJointController.
+#
+# Controls one or both TiagoPro arms by spawning arm_left_ / arm_right_ prefixed
+# controller instances.  The arm_side argument selects which arm(s) to spawn:
+#
+#   ros2 launch position_joint_controller position_joint_controller_gazebo_classic.launch.py \
+#       arm_side:=both     # (default) spawn both arms
+#   ros2 launch position_joint_controller position_joint_controller_gazebo_classic.launch.py \
+#       arm_side:=left
+#   ros2 launch position_joint_controller position_joint_controller_gazebo_classic.launch.py \
+#       arm_side:=right
 
 import os
-import yaml
-import tempfile
 from os import environ, pathsep
 from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
@@ -24,20 +33,14 @@ from launch.actions import (
     DeclareLaunchArgument,
     SetEnvironmentVariable,
     SetLaunchConfiguration,
-    GroupAction,
     OpaqueFunction,
 )
-from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
-from launch_pal.include_utils import (
-    include_scoped_launch_py_description,
-    include_launch_py_description,
-)
+from launch_pal.include_utils import include_scoped_launch_py_description
 from launch_pal.actions import CheckPublicSim
-
-from launch_pal.arg_utils import LaunchArgumentsBase, read_launch_argument
+from launch_pal.arg_utils import LaunchArgumentsBase
 from launch_pal.robot_arguments import CommonArgs
 from tiago_pro_description.launch_arguments import TiagoProArgs
 from dataclasses import dataclass
@@ -59,7 +62,6 @@ class LaunchArguments(LaunchArgumentsBase):
     wrist_model_left: DeclareLaunchArgument = TiagoProArgs.wrist_model_left
     camera_model: DeclareLaunchArgument = TiagoProArgs.camera_model
     laser_model: DeclareLaunchArgument = TiagoProArgs.laser_model
-    
 
     navigation: DeclareLaunchArgument = CommonArgs.navigation
     advanced_navigation: DeclareLaunchArgument = CommonArgs.advanced_navigation
@@ -69,115 +71,78 @@ class LaunchArguments(LaunchArgumentsBase):
     world_name: DeclareLaunchArgument = CommonArgs.world_name
     tuck_arm: DeclareLaunchArgument = CommonArgs.tuck_arm
     is_public_sim: DeclareLaunchArgument = CommonArgs.is_public_sim
-    #gazebo_version: DeclareLaunchArgument = CommonArgs.gazebo_version
 
 
-def private_navigation(context, *args, **kwargs):
+def spawn_controllers(context):
+    """Spawn the correct controller set based on arm_side."""
+    arm_side = context.perform_substitution(LaunchConfiguration('arm_side'))
+    pkg = FindPackageShare('position_joint_controller')
     actions = []
-    base_type = read_launch_argument('base_type', context)
-    camera_model = read_launch_argument('camera_model', context)
-    docking = read_launch_argument('docking', context)
-    advanced_navigation = read_launch_argument('advanced_navigation', context)
-    use_sim_time = read_launch_argument('use_sim_time', context)
-    rviz_cfg_pkg = base_type + '_2dnav'
-    if advanced_navigation == 'True':
-        rviz_cfg_pkg = base_type + '_advanced_2dnav'
 
-    robot_info = {
-        "robot_info_publisher": {
-            "ros__parameters": {
-                "robot_type": "tiago_pro",
-                "base_type": base_type,
-                "laser_model": "no-laser",
-                "camera_model": camera_model,
-                "advanced_navigation": (advanced_navigation == 'False'),
-                "has_dock": (docking == 'False'),
-                "use_sim_time": (use_sim_time == 'True'),
-            }
-        }
-    }
+    # Always spawn the broadcaster first (config file provides the joint list).
+    def _spawner(controller_name, yaml_path):
+        return Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=[controller_name, '--param-file', yaml_path],
+            output='screen',
+        )
 
-    temp_yaml = tempfile.mkdtemp()
-    temp_robot_info = os.path.join(temp_yaml, '99_robot_info.yaml')
-    with open(temp_robot_info, 'w') as temp_robot_info_file:
-        yaml.safe_dump(robot_info, temp_robot_info_file)
+    if arm_side in ('left', 'both'):
+        yaml_left = PathJoinSubstitution([pkg, 'config', 'left_arm_gazebo.yaml'])
+        actions.append(_spawner('joint_state_broadcaster', yaml_left))
+        actions.append(_spawner('arm_left_position_joint_controller', yaml_left))
 
-    # Robot Info Publisher
-    robot_info_env = SetEnvironmentVariable(
-        name='ROBOT_INFO_PATH',
-        value=temp_yaml,
-    )
-    actions.append(robot_info_env)
+    if arm_side in ('right', 'both'):
+        yaml_right = PathJoinSubstitution([pkg, 'config', 'right_arm_gazebo.yaml'])
+        if arm_side == 'right':
+            # broadcaster not yet spawned
+            actions.append(_spawner('joint_state_broadcaster', yaml_right))
+        actions.append(_spawner('arm_right_position_joint_controller', yaml_right))
 
-    robot_info_publisher = Node(
-        package='robot_info_publisher',
-        executable='robot_info_publisher',
-        name='robot_info_publisher',
-        output='screen',
-    )
-    actions.append(robot_info_publisher)
+    if arm_side == 'both':
+        # For dual arm, re-use the dual_arm config for the broadcaster so it
+        # covers all 14 joints, then override the two controller spawns.
+        yaml_dual = PathJoinSubstitution([pkg, 'config', 'dual_arm_gazebo.yaml'])
+        actions = [
+            _spawner('joint_state_broadcaster', yaml_dual),
+            _spawner('arm_left_position_joint_controller', yaml_dual),
+            _spawner('arm_right_position_joint_controller', yaml_dual),
+        ]
 
     return actions
 
 
 def declare_actions(launch_description: LaunchDescription, launch_args: LaunchArguments):
 
-    # Set use_sim_time to True
     set_sim_time = SetLaunchConfiguration("use_sim_time", "True")
     launch_description.add_action(set_sim_time)
 
-    # Shows error if is_public_sim is not set to True when using public simulation
     public_sim_check = CheckPublicSim()
     launch_description.add_action(public_sim_check)
 
-    robot_name = "tiago_pro"
     packages = ["tiago_pro_description", "pal_sea_arm_description",
                 "omni_base_description", "pal_pro_gripper_description",
                 "tiago_pro_head_description", "allegro_hand_description",
                 "pal_urdf_utils"]
 
-
     model_path = get_model_paths(packages)
-
-    gazebo_model_path_env_var = SetEnvironmentVariable(
-        "GAZEBO_MODEL_PATH", model_path)
+    gazebo_model_path_env_var = SetEnvironmentVariable("GAZEBO_MODEL_PATH", model_path)
 
     gazebo = include_scoped_launch_py_description(
         pkg_name="position_joint_controller",
         paths=["launch", "pal_gazebo.launch.py"],
         env_vars=[gazebo_model_path_env_var],
         launch_arguments={
-            "world_name":  "empty",
+            "world_name": "empty",
             "model_paths": packages,
             "resource_paths": packages,
-            #"debug":"True",
         })
-
     launch_description.add_action(gazebo)
-    
-    move_group = include_scoped_launch_py_description(
-        pkg_name="tiago_pro_moveit_config",
-        paths=["launch", "move_group.launch.py"],
-        launch_arguments={
-            "robot_name": robot_name,
-            "use_sim_time": LaunchConfiguration("use_sim_time"),
-            "base_type": launch_args.base_type,
-            "arm_type_right": launch_args.arm_type_right,
-            "arm_type_left": launch_args.arm_type_left,
-            "end_effector_right": launch_args.end_effector_right,
-            "end_effector_left": launch_args.end_effector_left,
-            "ft_sensor_right": launch_args.ft_sensor_right,
-            "ft_sensor_left": launch_args.ft_sensor_left
-        },
-        condition=IfCondition(LaunchConfiguration("moveit")))
-
-    launch_description.add_action(move_group)
-
 
     robot_spawn = include_scoped_launch_py_description(
         pkg_name="tiago_pro_gazebo",
         paths=["launch", "robot_spawn.launch.py"])
-
     launch_description.add_action(robot_spawn)
 
     robot_state_publisher = include_scoped_launch_py_description(
@@ -189,75 +154,56 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
             "base_type": launch_args.base_type,
             "use_sim_time": "True",
             "is_public_sim": "True",
-            "gazebo_version": "classic"
+            "gazebo_version": "classic",
         }
     )
     launch_description.add_action(robot_state_publisher)
 
-    controllers_yaml = PathJoinSubstitution(
-        [FindPackageShare('position_joint_controller'), 'config', 'controllers_gazebo.yaml']
-    )
+    # Mobile base controller
+    launch_description.add_action(OpaqueFunction(function=launch_mobile_base_controller))
 
-    spawn_joint_state_broadcaster = Node(
+    launch_description.add_action(OpaqueFunction(function=spawn_controllers))
+
+def launch_mobile_base_controller(context, *args, **kwargs):
+    # PAL's mobile_base_controller.launch.py gates the OmniDriveController behind
+    # UnlessCondition(use_sim_time), so it never spawns in simulation. We bypass
+    # that gate and spawn the controller directly so the wheel joints are commanded
+    # to zero velocity, preventing arm reaction forces from rotating the base.
+    base_type = context.perform_substitution(LaunchConfiguration('base_type'))
+    pkg = get_package_share_directory(base_type + '_controller_configuration')
+    yaml_path = os.path.join(pkg, 'config', 'mobile_base_controller.yaml')
+
+    return [Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_state_broadcaster', '--param-file', controllers_yaml],
+        arguments=['mobile_base_controller', '--param-file', yaml_path],
         output='screen',
-    )
-
-    spawn_position_joint_controller = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['position_joint_controller', '--param-file', controllers_yaml],
-        output='screen',
-    )
-
-    launch_description.add_action(spawn_joint_state_broadcaster)
-    launch_description.add_action(spawn_position_joint_controller)
-
-    return
-
+    )]
 
 def get_model_paths(packages_names):
     model_paths = ""
     for package_name in packages_names:
         if model_paths != "":
             model_paths += pathsep
-
         package_path = get_package_prefix(package_name)
-        model_path = os.path.join(package_path, "share")
-
-        model_paths += model_path
-
+        model_paths += os.path.join(package_path, "share")
     if "GAZEBO_MODEL_PATH" in environ:
         model_paths += pathsep + environ["GAZEBO_MODEL_PATH"]
-
     return model_paths
 
 
-def get_resource_paths(packages_names):
-    resource_paths = ""
-    for package_name in packages_names:
-        if resource_paths != "":
-            resource_paths += pathsep
-
-        package_path = get_package_prefix(package_name)
-        resource_paths += package_path
-
-    if "GAZEBO_RESOURCE_PATH" in environ:
-        resource_paths += pathsep + environ["GAZEBO_RESOURCE_PATH"]
-
-    return resource_paths
-
-
 def generate_launch_description():
-
-    # Create the launch description
     ld = LaunchDescription()
 
     launch_arguments = LaunchArguments()
-
     launch_arguments.add_to_launch_description(ld)
+
+    ld.add_action(DeclareLaunchArgument(
+        'arm_side',
+        default_value='both',
+        choices=['left', 'right', 'both'],
+        description='Which arm(s) to control: left, right, or both (default).',
+    ))
 
     declare_actions(ld, launch_arguments)
 

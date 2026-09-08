@@ -25,8 +25,8 @@
 namespace effort_joint_controller {
 
 // TiagoPro per-joint torque limits in N*m
-static constexpr std::array<double, 7> kDefaultEffortLimits{87.0, 87.0, 87.0, 87.0,
-                                                              12.0, 12.0, 12.0};
+static constexpr std::array<double, 7> kDefaultEffortLimits{43.0, 43.0, 26.0, 26.0,
+                                                              26.0, 26.0, 26.0};
 
 // ---------------------------------------------------------------------------
 // Interface configuration
@@ -60,6 +60,8 @@ CallbackReturn EffortJointController::on_init() {
         std::vector<double>(kDefaultEffortLimits.begin(), kDefaultEffortLimits.end()));
     auto_declare<double>("delta_tau_max", 1.0);
     auto_declare<double>("publish_rate", 500.0);
+    auto_declare<bool>("use_gravity_compensation", false);
+    auto_declare<std::string>("gravity_compensation_topic", "");
   } catch (const std::exception& e) {
     fprintf(stderr, "Exception thrown during on_init with message: %s\n", e.what());
     return CallbackReturn::ERROR;
@@ -133,10 +135,44 @@ CallbackReturn EffortJointController::on_configure(
             commands_buffer_.writeFromNonRT(commands);
           });
 
+  // Gravity compensation subscription (optional).
+  use_gravity_compensation_ =
+      get_node()->get_parameter("use_gravity_compensation").as_bool();
+  const auto grav_topic =
+      get_node()->get_parameter("gravity_compensation_topic").as_string();
+  if (use_gravity_compensation_) {
+    if (grav_topic.empty()) {
+      RCLCPP_WARN(get_node()->get_logger(),
+                  "use_gravity_compensation=true but gravity_compensation_topic is empty "
+                  "— gravity compensation disabled.");
+      use_gravity_compensation_ = false;
+    } else {
+      gravity_compensation_sub_ =
+          get_node()->create_subscription<tiago_pro_joint_controllers_msgs::msg::JointCommand>(
+              grav_topic, rclcpp::SystemDefaultsQoS(),
+              [this](
+                  const tiago_pro_joint_controllers_msgs::msg::JointCommand::SharedPtr msg) {
+                if (static_cast<int>(msg->command.size()) != kNumJoints) {
+                  RCLCPP_ERROR_THROTTLE(
+                      get_node()->get_logger(), *get_node()->get_clock(), 1000,
+                      "Gravity compensation message has wrong size (%zu, expected %d).",
+                      msg->command.size(), kNumJoints);
+                  return;
+                }
+                std::array<double, kNumJoints> g{};
+                std::copy(msg->command.begin(), msg->command.end(), g.begin());
+                gravity_buffer_.writeFromNonRT(g);
+              });
+      RCLCPP_INFO(get_node()->get_logger(),
+                  "Gravity compensation enabled, subscribing to '%s'.", grav_topic.c_str());
+    }
+  }
+
   RCLCPP_INFO(get_node()->get_logger(),
               "EffortJointController configured for robot '%s%s'. delta_tau_max=%.2f N*m/cycle, "
-              "publish_rate=%.1f Hz.",
-              arm_prefix_.c_str(), robot_type_.c_str(), delta_tau_max_, publish_rate);
+              "publish_rate=%.1f Hz, gravity_compensation=%s.",
+              arm_prefix_.c_str(), robot_type_.c_str(), delta_tau_max_, publish_rate,
+              use_gravity_compensation_ ? "enabled" : "disabled");
   return CallbackReturn::SUCCESS;
 }
 
@@ -145,6 +181,7 @@ CallbackReturn EffortJointController::on_activate(
   std::array<double, kNumJoints> zeros{};
   zeros.fill(0.0);
   commands_buffer_.writeFromNonRT(zeros);
+  gravity_buffer_.writeFromNonRT(zeros);
   prev_commands_ = zeros;
   accumulated_period_ns_ = 0;
   return CallbackReturn::SUCCESS;
@@ -156,13 +193,26 @@ CallbackReturn EffortJointController::on_activate(
 
 controller_interface::return_type EffortJointController::update(const rclcpp::Time& /*time*/,
                                                                 const rclcpp::Duration& period) {
+  // TriggerRate: skip writing until enough time has accumulated since the
+  // last write, so hardware writes happen at publish_rate even if update()
+  // is called faster by the controller_manager.
   accumulated_period_ns_ += period.nanoseconds();
   if (accumulated_period_ns_ < write_period_ns_) {
     return controller_interface::return_type::OK;
   }
   accumulated_period_ns_ = 0;
 
-  const auto target = *commands_buffer_.readFromRT();
+  auto target = *commands_buffer_.readFromRT();
+
+  // Add gravity compensation feedforward and re-clamp to per-joint limits.
+  if (use_gravity_compensation_) {
+    const auto grav = *gravity_buffer_.readFromRT();
+    for (int i = 0; i < kNumJoints; ++i) {
+      target[i] = std::max(std::min(target[i] + grav[i], effort_limits_[i]),
+                           -effort_limits_[i]);
+    }
+  }
+
   const auto saturated = saturateTorqueRate(target, prev_commands_);
 
   for (int i = 0; i < kNumJoints; ++i) {
@@ -185,6 +235,8 @@ std::array<double, EffortJointController::kNumJoints> EffortJointController::sat
     const std::array<double, kNumJoints>& prev) const {
   std::array<double, kNumJoints> out{};
   for (int i = 0; i < kNumJoints; ++i) {
+    // Clamp the per-cycle torque delta to ±delta_tau_max so a large jump in
+    // the commanded torque doesn't trip the hardware's safety stop.
     const double diff = target[i] - prev[i];
     out[i] = prev[i] + std::max(std::min(diff, delta_tau_max_), -delta_tau_max_);
   }

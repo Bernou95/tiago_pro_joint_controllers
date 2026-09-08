@@ -1,0 +1,3 @@
+arm_controllers:
+  launch: "effort_joint_controller multi_controller_real_robot.launch.py"
+  finishes: True

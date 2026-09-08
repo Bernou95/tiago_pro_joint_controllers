@@ -1,0 +1,72 @@
+# Left-arm multi-controller configuration for Gazebo Classic simulation.
+# Loads position (active), velocity (inactive), effort (inactive) controllers
+# plus the MotionControllerInterface coordinator (always active).
+# Passed via --param-file to all spawner calls in multi_controller_gazebo_classic.launch.py.
+#
+# Mode switching (publish std_msgs/Int32 to /arm_left_motion_controller_interface/set_mode):
+#   0 = position (default)   1 = effort   2 = velocity   3 = gravity_compensation
+
+controller_manager:
+  ros__parameters:
+    update_rate: 1000  # Hz
+
+joint_state_broadcaster:
+  ros__parameters:
+    type: joint_state_broadcaster/JointStateBroadcaster
+    update_rate: 500  # Hz
+    interfaces:
+      - position
+      - velocity
+      - effort
+
+arm_left_position_joint_controller:
+  ros__parameters:
+    type: position_joint_controller/PositionJointController
+    arm_prefix: 'arm_left'
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+    filter_coeff: 1.0
+    update_rate: 100  # Hz
+    position_limits_lower: [-0.5235, -2.4434, -2.6179, -2.4434, -3.6651, -1.8849, -2.6179]  # rad, TiagoPro
+    position_limits_upper: [4.7123, 1.1344, 2.6179, 1.1344, 1.5708, 3.0019, 2.6179]  # rad, TiagoPro
+
+arm_left_velocity_joint_controller:
+  ros__parameters:
+    type: velocity_joint_controller/VelocityJointController
+    arm_prefix: 'arm_left'
+    command_interfaces:
+      - velocity
+    state_interfaces:
+      - velocity
+    filter_coeff: 1.0
+    publish_rate: 200.0  # Hz
+    velocity_limits: [1.95, 1.95, 3.95, 3.95, 3.95, 3.95, 3.95]  # rad/s
+
+arm_left_effort_joint_controller:
+  ros__parameters:
+    type: effort_joint_controller/EffortJointController
+    arm_prefix: 'arm_left'
+    command_interfaces:
+      - effort
+    state_interfaces:
+      - effort
+    effort_limits: [43.0, 43.0, 26.0, 26.0, 26.0, 26.0, 26.0]  # N*m, Gazebo limits
+    delta_tau_max: 1.0    # N*m/cycle max torque rate
+    publish_rate: 500.0   # Hz
+    use_gravity_compensation: false
+    gravity_compensation_topic: ''
+
+arm_left_motion_controller_interface:
+  ros__parameters:
+    type: motion_controller_interface/MotionControllerInterface
+    position_controller_name: arm_left_position_joint_controller
+    velocity_controller_name: arm_left_velocity_joint_controller
+    effort_controller_name: arm_left_effort_joint_controller
+    gravity_compensation_controller_name: arm_left_gravity_compensation_controller
+    command_timeout: 0.5
+    switch_overlap_duration: 0.3
+    controller_manager_topic: /controller_manager
+    effort_commands_topic: /arm_left_effort_joint_controller/commands
+    velocity_commands_topic: /arm_left_velocity_joint_controller/commands
