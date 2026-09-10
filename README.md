@@ -47,38 +47,41 @@ Controller modes are switched by `motion_controller_interface` through the `cont
 
 ## 3. Software Architecture
 
-All four components are loaded as `pluginlib` plugins by `controller_manager`:
+All four components are loaded as plugins by `controller_manager`:
 
-ROS topics
-    │
-    ▼
-Position / Effort / Velocity Controllers
-    │
-    ▼
-ros2_control hardware interfaces
-    │
-    ▼
-TiagoPro / Gazebo
+```mermaid
+flowchart TB
+    CM["controller_manager"]
 
-MotionControllerInterface
-    │
-    ├── mode switching
-    └── command timeout → position
+    CM --> P["PositionJointController"]
+    CM --> E["EffortJointController"]
+    CM --> V["VelocityJointController"]
+    CM --> M["MotionControllerInterface"]
+
+    P --> PI["ros2_control<br/>position interface"]
+    E --> EI["ros2_control<br/>effort interface"]
+    V --> VI["ros2_control<br/>velocity interface"]
+
+    PI --> H["TiagoPro / Gazebo"]
+    EI --> H
+    VI --> H
+
+    M --> S["Controller switching"]
+    M --> T["Command timeout<br/>→ position mode"]
+```
 
 ### Key points
 
-* **Independent controllers:** Position, effort, and velocity controllers implement `ControllerInterface` and claim their respective hardware interfaces. Only one control mode is active per arm.
-* **RT-safe commands:** ROS callbacks validate incoming commands and pass them to the real-time `update()` loop through `RealtimeBuffer`.
-* **Mode coordinator:** `MotionControllerInterface` does not claim hardware interfaces. It handles controller switching and monitors command activity.
-* **Safety fallback:** If no effort or velocity command is received within `command_timeout` (default **0.5 s**), the coordinator switches back to position control. Gravity-compensation mode is not subject to this timeout.
-* **Controller switching:** Activation and deactivation are performed in a single `switch_controller` request to ensure the hardware mode is switched consistently.
+* **Position, effort, and velocity controllers** independently implement `ControllerInterface` and claim their respective hardware interfaces.
+* **`MotionControllerInterface`** does not claim hardware interfaces; it handles runtime mode switching and command-timeout monitoring.
+* Commands cross the ROS/non-RT boundary through `RealtimeBuffer` before being processed by the real-time controller loop.
+* If effort or velocity commands stop arriving for `command_timeout` (default **0.5 s**), the coordinator switches back to position mode.
 
 ## 4. Requirements & Dependencies
 
 ### Software
 
 * **ROS 2 Humble**
-* **`ros2_control`**
 * **PAL Robotics TiagoPro software stack**
 * **Gazebo Classic** — optional, for simulation
 
